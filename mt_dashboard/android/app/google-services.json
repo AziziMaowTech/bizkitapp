@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "390443215780",
+    "project_id": "mt-dashboard-8f04f",
+    "storage_bucket": "mt-dashboard-8f04f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:390443215780:android:3c025028a9adb929bb6f31",
+        "android_client_info": {
+          "package_name": "com.example.mt_dashboard"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "390443215780-ua6uh22mo7gs2rsijjgl85ks73frcful.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCpjustFzuaw3BwShO-sm6g20wPB0wyb_w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "390443215780-ua6uh22mo7gs2rsijjgl85ks73frcful.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
