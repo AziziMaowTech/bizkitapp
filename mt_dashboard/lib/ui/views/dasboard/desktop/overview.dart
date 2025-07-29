@@ -278,7 +278,7 @@ class Overview extends StatelessWidget {
                               textAlign: TextAlign.left,
                             ),
                             const SizedBox(height: 4),
-                            userName()
+                            authService.value.userName(),
                           ],
                         ),
                       ),
@@ -310,7 +310,7 @@ class Overview extends StatelessWidget {
                               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                               textAlign: TextAlign.left,
                             ),
-                            companyName(),
+                            authService.value.companyName(),
                           ],
                         ),
                       ),
@@ -433,7 +433,7 @@ class Overview extends StatelessWidget {
                               textAlign: TextAlign.left,
                             ),
                             const SizedBox(height: 4),
-                            domainName(),
+                            authService.value.domainName(),
                           ],
                         ),
                       ),
@@ -518,7 +518,7 @@ class Overview extends StatelessWidget {
                               textAlign: TextAlign.left,
                             ),
                             const SizedBox(height: 4),
-                            addressName(),
+                            authService.value.addressName(),
                           ],
                         ),
                       ),
@@ -551,7 +551,7 @@ class Overview extends StatelessWidget {
                               textAlign: TextAlign.left,
                             ),
                             const SizedBox(height: 4),
-                            facebookName()
+                            authService.value.facebookName()
                           ],
                         ),
                       ),
@@ -584,7 +584,7 @@ class Overview extends StatelessWidget {
                               textAlign: TextAlign.left,
                             ),
                             const SizedBox(height: 4),
-                            instagramName(),
+                            authService.value.instagramName(),
                           ],
                         ),
                       ),
@@ -617,7 +617,7 @@ class Overview extends StatelessWidget {
                               textAlign: TextAlign.left,
                             ),
                             const SizedBox(height: 4),
-                            youtubeName()
+                            authService.value.youtubeName()
                           ],
                         ),
                       ),
@@ -650,7 +650,7 @@ class Overview extends StatelessWidget {
                               textAlign: TextAlign.left,
                             ),
                             const SizedBox(height: 4),
-                            twitterName()
+                            authService.value.twitterName()
                           ],
                         ),
                       ),

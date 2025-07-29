@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "node-domexception": "^2.0.2"
+  }
+}

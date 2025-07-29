@@ -19,8 +19,6 @@ void main() async {
 class Catalouge extends StatelessWidget {
   const Catalouge({super.key});
 
-  // A global key for the ScaffoldMessengerState which is highly stable.
-  // This can be used to show SnackBars from anywhere without needing a context.
   static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
@@ -31,7 +29,6 @@ class Catalouge extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      // Assign the static key to the ScaffoldMessenger
       scaffoldMessengerKey: scaffoldMessengerKey,
       home: const CatalougeScreen(),
     );
@@ -46,39 +43,33 @@ class CatalougeScreen extends StatefulWidget {
 }
 
 class _CatalougeScreenState extends State<CatalougeScreen> {
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _catalougeNameController = TextEditingController();
 
-  // --- Category Search Controller & State ---
-  final TextEditingController _categorySearchController = TextEditingController();
-  String _categorySearchQuery = '';
-  bool _isSearchingCategories = false;
-
-  // --- Brand Search Controller & State ---
+  // --- Brand Search Controller & State (for middle panel) ---
   final TextEditingController _brandSearchController = TextEditingController();
   String _brandSearchQuery = '';
   bool _isSearchingBrands = false;
 
   // --- Brand Input Controllers & State (used for both Add and Edit) ---
   String? _selectedCategoryId;
-  String? _selectedCategoryName; // To store the name of the selected category for denormalization
+  String? _selectedCategoryName;
   final TextEditingController _brandNameController = TextEditingController();
   final TextEditingController _quantitiesController = TextEditingController();
   final TextEditingController _colourController = TextEditingController();
   final TextEditingController _sizeController = TextEditingController();
+  final TextEditingController _priceController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
 
   final TextEditingController _reauthPasswordController = TextEditingController();
 
+  String? _currentlySelectedCategoryIdForMiddlePanel;
+  String? _currentlySelectedCategoryNameForMiddlePanel;
+
+  DocumentSnapshot? _currentlySelectedBrandForPreview;
 
   @override
   void initState() {
     super.initState();
-    _categorySearchController.addListener(() {
-      setState(() {
-        _categorySearchQuery = _categorySearchController.text;
-      });
-    });
     _brandSearchController.addListener(() {
       setState(() {
         _brandSearchQuery = _brandSearchController.text;
@@ -93,14 +84,13 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
     _quantitiesController.dispose();
     _colourController.dispose();
     _sizeController.dispose();
+    _priceController.dispose();
     _descriptionController.dispose();
     _reauthPasswordController.dispose();
-    _categorySearchController.dispose(); // Dispose search controllers
     _brandSearchController.dispose();
     super.dispose();
   }
 
-  // --- Utility to get current user ---
   User? get _currentUser => FirebaseAuth.instance.currentUser;
 
   // --- Add Category Function ---
@@ -144,8 +134,6 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
   }
 
   // --- Re-authentication Helper Function ---
-  // Returns true if re-authentication/verification passes, false otherwise.
-  // Context is passed to this function for showing its own dialogs.
   Future<bool> _reauthenticateUser(BuildContext context) async {
     final User? currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
@@ -158,18 +146,17 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
     bool isEmailPasswordUser = currentUser.providerData.any((info) => info.providerId == 'password');
     bool isGoogleUser = currentUser.providerData.any((info) => info.providerId == 'google.com');
 
-
     if (isEmailPasswordUser) {
-      _reauthPasswordController.clear(); // Clear password field for new attempt
+      _reauthPasswordController.clear();
       bool? confirmed = await showDialog<bool>(
-        context: context, // Use the context passed to this function
-        barrierDismissible: false, // User must interact with dialog
+        context: context,
+        barrierDismissible: false,
         builder: (reauthDialogContext) {
           return AlertDialog(
             title: const Text('Confirm your password'),
             content: TextField(
               controller: _reauthPasswordController,
-              obscureText: true, // Hide password
+              obscureText: true,
               decoration: const InputDecoration(
                 labelText: 'Password',
                 border: OutlineInputBorder(),
@@ -177,22 +164,20 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(reauthDialogContext).pop(false), // User cancelled
+                onPressed: () => Navigator.of(reauthDialogContext).pop(false),
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
                 onPressed: () async {
                   String password = _reauthPasswordController.text;
                   try {
-                    // Create an AuthCredential with the user's email and entered password
                     AuthCredential credential = EmailAuthProvider.credential(
-                      email: currentUser.email!, // Assumes email is available
+                      email: currentUser.email!,
                       password: password,
                     );
                     await currentUser.reauthenticateWithCredential(credential);
-                    Navigator.of(reauthDialogContext).pop(true); // Password confirmed, pop reauth dialog
+                    Navigator.of(reauthDialogContext).pop(true);
                   } on FirebaseAuthException catch (e) {
-                    // Don't pop dialog on failure, let user retry
                     Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
                       SnackBar(content: Text('Re-authentication failed: ${e.message}')),
                     );
@@ -208,17 +193,13 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
           );
         },
       );
-      return confirmed ?? false; // Return false if dialog is dismissed without selection
+      return confirmed ?? false;
     } else if (isGoogleUser) {
-      // --- Simple Captcha for Google users (Demonstration) ---
-      // NOTE: For true security, you would use a robust reCAPTCHA service
-      // or re-authenticate via Google's own re-signin flow (which might trigger external browser/popup).
-      // This is a simplified example as requested.
       final TextEditingController captchaController = TextEditingController();
-      const String correctCaptcha = "VERIFY"; // Simple captcha word
+      const String correctCaptcha = "VERIFY";
 
       bool? captchaConfirmed = await showDialog<bool>(
-        context: context, // Use the context passed to this function
+        context: context,
         barrierDismissible: false,
         builder: (captchaDialogContext) {
           return AlertDialog(
@@ -241,12 +222,11 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
               ElevatedButton(
                 onPressed: () {
                   if (captchaController.text.trim().toUpperCase() == correctCaptcha) {
-                    Navigator.of(captchaDialogContext).pop(true); // Captcha confirmed
+                    Navigator.of(captchaDialogContext).pop(true);
                   } else {
                     Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
                       const SnackBar(content: Text('Incorrect captcha. Try again.')),
                     );
-                    // Don't pop dialog on incorrect captcha, let user retry
                   }
                 },
                 child: const Text('Confirm'),
@@ -255,25 +235,22 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
           );
         },
       );
-      return captchaConfirmed ?? false; // Return false if dialog is dismissed
+      return captchaConfirmed ?? false;
     } else {
-      // For other providers (e.g., anonymous, custom token, phone, etc.)
-      // In a real app, you MUST implement appropriate re-authentication for sensitive operations.
-      // For this example, we'll bypass it for non-email/password and non-Google for simplicity.
       Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
-        const SnackBar(content: Text('Re-authentication for this provider type is not implemented in this example. Bypassing security check.')),
+        const SnackBar(
+            content: Text(
+                'Re-authentication for this provider type is not implemented in this example. Bypassing security check.')),
       );
-      return true; // Bypass re-auth for unsupported provider types in this example
+      return true;
     }
   }
 
-
-  // --- Perform Brand Update (after verification) ---
   Future<void> _performBrandUpdate(String brandDocPath, Map<String, dynamic> updatedData, NavigatorState editDialogNavigator) async {
     try {
       await FirebaseFirestore.instance.doc(brandDocPath).update(updatedData);
 
-      editDialogNavigator.pop(); // Pop the Edit Brand dialog after successful update
+      editDialogNavigator.pop();
 
       Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(content: Text('Brand updated successfully!')),
@@ -286,8 +263,6 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
     }
   }
 
-
-  // --- Show Add Category Dialog ---
   void _showAddCatalougeDialog() {
     _catalougeNameController.clear();
     showDialog(
@@ -319,16 +294,16 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
     );
   }
 
-  // --- Show Add Brand Dialog ---
   void _showAddBrandDialog() {
     _brandNameController.clear();
     _quantitiesController.clear();
     _colourController.clear();
     _sizeController.clear();
+    _priceController.clear();
     _descriptionController.clear();
     setState(() {
-      _selectedCategoryId = null; // Reset selection
-      _selectedCategoryName = null; // Reset name
+      _selectedCategoryId = null;
+      _selectedCategoryName = null;
     });
 
     if (_currentUser == null) {
@@ -358,18 +333,18 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
                     if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                       return const Padding(
                         padding: EdgeInsets.symmetric(vertical: 8.0),
-                        child: Text('No Categories found. Please add one first.'),
+                        child: Text('No Catalouges found. Please add one first.'),
                       );
                     }
                     if (snapshot.hasError) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: Text('Error loading Categories: ${snapshot.error}'),
+                        child: Text('Error loading Catalouges: ${snapshot.error}'),
                       );
                     }
 
                     List<DropdownMenuItem<String>> categoryItems = [];
-                    String? currentSelectedName; // Store name temporarily for initial selection
+                    String? currentSelectedName;
                     for (var doc in snapshot.data!.docs) {
                       final data = doc.data() as Map<String, dynamic>?;
                       final categoryName = (data?['name'] as String?) ?? 'Unnamed Category';
@@ -396,7 +371,6 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
                         });
                       }
                     });
-
 
                     return DropdownButtonFormField<String>(
                       value: _selectedCategoryId,
@@ -452,6 +426,20 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                // Price field with $ prefix
+                TextField(
+                  controller: _priceController,
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Price',
+                    border: OutlineInputBorder(),
+                    prefixText: '\$',
+                  ),
+                  inputFormatters: [
+                    // Optionally, you can add input formatters for numeric input
+                  ],
+                ),
+                const SizedBox(height: 16),
                 TextField(
                   controller: _descriptionController,
                   maxLines: 3,
@@ -473,6 +461,7 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
                 _quantitiesController.clear();
                 _colourController.clear();
                 _sizeController.clear();
+                _priceController.clear();
                 _descriptionController.clear();
                 setState(() {
                   _selectedCategoryId = null;
@@ -490,15 +479,20 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
     );
   }
 
-  // --- Add Brand Function ---
   Future<void> _addBrand(NavigatorState dialogNavigator) async {
     final String? categoryId = _selectedCategoryId;
-    final String? categoryName = _selectedCategoryName; // Use the stored category name
+    final String? categoryName = _selectedCategoryName;
     final String brandName = _brandNameController.text.trim();
     final int quantities = int.tryParse(_quantitiesController.text.trim()) ?? 0;
     final String colour = _colourController.text.trim();
     final String size = _sizeController.text.trim();
+    String price = _priceController.text.trim();
     final String description = _descriptionController.text.trim();
+
+    // Ensure price always starts with a dollar sign
+    if (price.isNotEmpty && !price.startsWith('\$')) {
+      price = '\$' + price;
+    }
 
     if (categoryId.isNullOrEmpty || categoryName.isNullOrEmpty) {
       Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
@@ -531,9 +525,10 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
         'quantities': quantities,
         'colour': colour,
         'size': size,
+        'price': price, // Always with dollar sign
         'description': description,
         'categoryId': categoryId,
-        'categoryName': categoryName, // Save category name here!
+        'categoryName': categoryName,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -542,10 +537,11 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
       _quantitiesController.clear();
       _colourController.clear();
       _sizeController.clear();
+      _priceController.clear();
       _descriptionController.clear();
       setState(() {
         _selectedCategoryId = null;
-        _selectedCategoryName = null; // Clear name after successful add
+        _selectedCategoryName = null;
       });
       Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(content: Text('Brand added successfully!')),
@@ -558,7 +554,6 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
     }
   }
 
-  // --- Verify Auth and Update Brand ---
   Future<void> _verifyAuthAndUpdateBrand(String brandDocPath, Map<String, dynamic> updatedData, NavigatorState editDialogNavigator) async {
     bool verified = await _reauthenticateUser(context);
     if (verified) {
@@ -570,22 +565,22 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
     }
   }
 
-  // --- Show Edit Brand Dialog ---
   Future<void> _showEditBrandDialog(DocumentSnapshot brandDoc) async {
     final data = brandDoc.data() as Map<String, dynamic>?;
     if (data == null) return;
 
-    // Pre-fill controllers with existing data from the brand document
     _brandNameController.text = (data['name'] as String?) ?? '';
     _quantitiesController.text = (data['quantities'] as num?)?.toString() ?? '';
     _colourController.text = (data['colour'] as String?) ?? '';
     _sizeController.text = (data['size'] as String?) ?? '';
+    // Remove any leading $ for editing, but will add back on save
+    String priceValue = (data['price'] as String?) ?? '';
+    _priceController.text = priceValue.startsWith('\$') ? priceValue.substring(1) : priceValue;
     _descriptionController.text = (data['description'] as String?) ?? '';
 
-    // Set selected category ID and Name for the dropdown / display
     setState(() {
       _selectedCategoryId = (data['categoryId'] as String?);
-      _selectedCategoryName = (data['categoryName'] as String?); // NEW: Get category name from brand doc
+      _selectedCategoryName = (data['categoryName'] as String?);
     });
 
     final String brandDocPath = brandDoc.reference.path;
@@ -599,21 +594,19 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Category Display (Read-only for edit)
-                // Display the stored categoryName directly from state/brandDoc.
                 AbsorbPointer(
-                  absorbing: true, // Make this section non-interactive
+                  absorbing: true,
                   child: DropdownButtonFormField<String>(
                     value: _selectedCategoryId,
                     items: _selectedCategoryId != null && _selectedCategoryName != null
                         ? [
                             DropdownMenuItem(
                               value: _selectedCategoryId,
-                              child: Text(_selectedCategoryName!), // Use the stored name
+                              child: Text(_selectedCategoryName!),
                             ),
                           ]
-                        : [], // Empty if no category selected
-                    onChanged: (newValue) {}, // No change allowed
+                        : [],
+                    onChanged: (newValue) {},
                     decoration: const InputDecoration(
                       labelText: 'Category (Cannot change)',
                       border: OutlineInputBorder(),
@@ -654,6 +647,20 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                // Price field with $ prefix
+                TextField(
+                  controller: _priceController,
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Price',
+                    border: OutlineInputBorder(),
+                    prefixText: '\$',
+                  ),
+                  inputFormatters: [
+                    // Optionally, you can add input formatters for numeric input
+                  ],
+                ),
+                const SizedBox(height: 16),
                 TextField(
                   controller: _descriptionController,
                   maxLines: 3,
@@ -671,30 +678,32 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
               child: const Text('Cancel'),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
-                // Clear and reset state on cancel (important for next add/edit operation)
                 _brandNameController.clear();
                 _quantitiesController.clear();
                 _colourController.clear();
                 _sizeController.clear();
+                _priceController.clear();
                 _descriptionController.clear();
                 setState(() {
                   _selectedCategoryId = null;
-                  _selectedCategoryName = null; // Clear name
+                  _selectedCategoryName = null;
                 });
               },
             ),
             ElevatedButton(
               onPressed: () async {
-                // Prepare updated data from controllers
+                String updatedPrice = _priceController.text.trim();
+                if (updatedPrice.isNotEmpty && !updatedPrice.startsWith('\$')) {
+                  updatedPrice = '\$' + updatedPrice;
+                }
                 final updatedData = {
                   'name': _brandNameController.text.trim(),
                   'quantities': int.tryParse(_quantitiesController.text.trim()) ?? 0,
                   'colour': _colourController.text.trim(),
                   'size': _sizeController.text.trim(),
+                  'price': updatedPrice,
                   'description': _descriptionController.text.trim(),
-                  // Category ID and createdAt are usually not updated during edit
-                  // parent category cannot be changed via simple update, requires delete + add
-                  'categoryName': _selectedCategoryName, // NEW: Pass the currently selected/displayed category name
+                  'categoryName': _selectedCategoryName,
                 };
                 await _verifyAuthAndUpdateBrand(brandDocPath, updatedData, Navigator.of(dialogContext));
               },
@@ -712,18 +721,18 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
 
     if (currentUser == null) {
       return Scaffold(
-        key: _scaffoldKey,
+        key: GlobalKey<ScaffoldState>(),
         appBar: AppBar(
           title: const Text('Please Log In'),
         ),
         body: const Center(
-          child: Text('You must be logged in to view categories.'),
+          child: Text('You must be logged in to view catalouges.'),
         ),
       );
     }
 
     return Scaffold(
-      key: _scaffoldKey,
+      key: GlobalKey<ScaffoldState>(),
       body: Row(
         children: [
           // Left "Category" Section (Main Content Area)
@@ -737,15 +746,9 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
                   height: kToolbarHeight,
                   child: Row(
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.menu, color: Colors.white),
-                        onPressed: () {
-                          _scaffoldKey.currentState?.openDrawer();
-                        },
-                      ),
                       Expanded(
                         child: Text(
-                          'Categories',
+                          'Catalouges',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 20,
@@ -757,46 +760,12 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.search, color: Colors.white),
-                        onPressed: () {
-                          // Toggle search bar visibility
-                          setState(() {
-                            _isSearchingCategories = !_isSearchingCategories;
-                            if (!_isSearchingCategories) {
-                              _categorySearchController.clear();
-                              _categorySearchQuery = ''; // Clear query when closing search
-                            }
-                          });
-                        },
-                      ),
-                      IconButton(
                         icon: const Icon(Icons.add, color: Colors.white),
                         onPressed: _showAddCatalougeDialog,
                       ),
                     ],
                   ),
                 ),
-                // NEW: Category Search Input Field
-                if (_isSearchingCategories)
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: TextField(
-                      controller: _categorySearchController,
-                      decoration: InputDecoration(
-                        hintText: 'Search categories...',
-                        prefixIcon: const Icon(Icons.search),
-                        suffixIcon: _categorySearchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  _categorySearchController.clear();
-                                },
-                              )
-                            : null,
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
@@ -804,11 +773,6 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
                         .doc(currentUser.uid)
                         .collection('category')
                         .orderBy('createdAt', descending: true)
-                        // NEW: Apply search filter
-                        .where('name',
-                            isGreaterThanOrEqualTo: _categorySearchQuery.isEmpty ? null : _categorySearchQuery)
-                        .where('name',
-                            isLessThanOrEqualTo: _categorySearchQuery.isEmpty ? null : _categorySearchQuery + '\uf8ff')
                         .snapshots(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
@@ -820,7 +784,7 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
 
                       if (snapshot.data == null || snapshot.data!.docs.isEmpty) {
                         return const Center(
-                          child: Text('No categories found. Add one!'),
+                          child: Text('No catalouges found. Add one!'),
                         );
                       }
 
@@ -834,59 +798,125 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
 
                           return Card(
                             margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                              child: Row(
-                                children: [
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _currentlySelectedCategoryIdForMiddlePanel = doc.id;
+                                  _currentlySelectedCategoryNameForMiddlePanel = categoryName;
+                                  _brandSearchController.clear();
+                                  _brandSearchQuery = '';
+                                  _isSearchingBrands = false;
+                                  _currentlySelectedBrandForPreview = null;
+                                });
+                              },
+                                child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                                child: Row(
+                                  children: [
                                   Expanded(
-                                    child: Text(
-                                      categoryName,
-                                      style: const TextStyle(fontSize: 16),
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 1,
+                                    child: Row(
+                                    children: [
+                                      Expanded(
+                                      child: Text(
+                                        categoryName,
+                                        style: const TextStyle(fontSize: 16),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                      ),
+                                      // Display brand count
+                                      StreamBuilder<QuerySnapshot>(
+                                      stream: FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(currentUser.uid)
+                                        .collection('category')
+                                        .doc(doc.id)
+                                        .collection('brand')
+                                        .snapshots(),
+                                      builder: (context, brandSnapshot) {
+                                        if (brandSnapshot.hasError) {
+                                        return const SizedBox.shrink();
+                                        }
+                                        if (!brandSnapshot.hasData) {
+                                        return const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        );
+                                        }
+                                        final int count = brandSnapshot.data!.docs.length;
+                                        return Padding(
+                                        padding: const EdgeInsets.only(left: 8.0),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                          color: Colors.blue[100],
+                                          borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                          '$count',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.blue,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          ),
+                                        ),
+                                        );
+                                      },
+                                      ),
+                                    ],
                                     ),
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.delete, color: Colors.redAccent),
                                     onPressed: () async {
-                                      if (!mounted) {
-                                        print('Widget already unmounted during delete click.');
-                                        return;
+                                    if (!mounted) {
+                                      print('Widget already unmounted during delete click.');
+                                      return;
+                                    }
+
+                                    bool verified = await _reauthenticateUser(context);
+                                    if (!verified) {
+                                      Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
+                                      const SnackBar(content: Text('Deletion cancelled due to verification failure.')),
+                                      );
+                                      return;
+                                    }
+
+                                    try {
+                                      await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(currentUser.uid)
+                                        .collection('category')
+                                        .doc(doc.id)
+                                        .delete();
+
+                                      if (_currentlySelectedCategoryIdForMiddlePanel == doc.id) {
+                                      setState(() {
+                                        _currentlySelectedCategoryIdForMiddlePanel = null;
+                                        _currentlySelectedCategoryNameForMiddlePanel = null;
+                                        _currentlySelectedBrandForPreview = null;
+                                      });
                                       }
 
-                                      // NEW: Re-authenticate before deleting category
-                                      bool verified = await _reauthenticateUser(context);
-                                      if (!verified) {
-                                        Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
-                                          const SnackBar(content: Text('Deletion cancelled due to verification failure.')),
-                                        );
-                                        return;
+                                      if (mounted) {
+                                      Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
+                                        const SnackBar(content: Text('Category deleted!')),
+                                      );
                                       }
-
-                                      try {
-                                        await FirebaseFirestore.instance
-                                            .collection('users')
-                                            .doc(currentUser.uid)
-                                            .collection('category')
-                                            .doc(doc.id)
-                                            .delete();
-
-                                        if (mounted) {
-                                          Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
-                                            const SnackBar(content: Text('Category deleted!')),
-                                          );
-                                        }
-                                      } catch (e) {
-                                        print('Error deleting Category: $e');
-                                        if (mounted) {
-                                          Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
-                                            SnackBar(content: Text('Failed to delete Category: $e')),
-                                          );
-                                        }
+                                    } catch (e) {
+                                      print('Error deleting Category: $e');
+                                      if (mounted) {
+                                      Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
+                                        SnackBar(content: Text('Failed to delete Category: $e')),
+                                      );
                                       }
+                                    }
                                     },
                                   ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           );
@@ -898,175 +928,302 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
               ],
             ),
           ),
-          // Right "Additional Content" Container
+          // Middle Container: Displays Brands based on selected category (or all brands categorized)
           Expanded(
-            flex: 3,
-            child: Container(
-              color: Colors.blueGrey[100],
-              child: const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(
-                    'Additional Content / Details Here\n\nThis section is now larger!',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18, color: Colors.black54),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      drawer: Drawer(
-        child: Column(
-          children: [
-            AppBar(
-              title: _isSearchingBrands // Toggle AppBar title with search field
-                  ? TextField(
-                      controller: _brandSearchController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Search brands...',
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-                        border: InputBorder.none,
+            flex: 2,
+            child: Column(
+              children: [
+                AppBar(
+                  title: _currentlySelectedCategoryIdForMiddlePanel == null
+                      ? _isSearchingBrands
+                          ? TextField(
+                              controller: _brandSearchController,
+                              style: const TextStyle(color: Colors.black),
+                              decoration: InputDecoration(
+                                hintText: 'Search all products...',
+                                hintStyle: TextStyle(color: Colors.black),
+                                border: InputBorder.none,
+                              ),
+                            )
+                          : const Text('All Products')
+                      : Text(_currentlySelectedCategoryNameForMiddlePanel ?? 'Brands'),
+                  leading: _currentlySelectedCategoryIdForMiddlePanel != null
+                      ? IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () {
+                            setState(() {
+                              _currentlySelectedCategoryIdForMiddlePanel = null;
+                              _currentlySelectedCategoryNameForMiddlePanel = null;
+                              _brandSearchController.clear();
+                              _brandSearchQuery = '';
+                              _isSearchingBrands = false;
+                              _currentlySelectedBrandForPreview = null;
+                            });
+                          },
+                        )
+                      : null,
+                  automaticallyImplyLeading: false,
+                  actions: [
+                    if (_currentlySelectedCategoryIdForMiddlePanel == null)
+                      IconButton(
+                        icon: Icon(_isSearchingBrands ? Icons.close : Icons.search),
+                        onPressed: () {
+                          setState(() {
+                            _isSearchingBrands = !_isSearchingBrands;
+                            if (!_isSearchingBrands) {
+                              _brandSearchController.clear();
+                              _brandSearchQuery = '';
+                            }
+                          });
+                        },
                       ),
-                    )
-                  : const Text('Brands'),
-              automaticallyImplyLeading: false,
-              actions: [
-                IconButton(
-                  icon: Icon(_isSearchingBrands ? Icons.close : Icons.search), // Toggle icon
-                  onPressed: () {
-                    setState(() {
-                      _isSearchingBrands = !_isSearchingBrands;
-                      if (!_isSearchingBrands) {
-                        _brandSearchController.clear();
-                        _brandSearchQuery = ''; // Clear query when closing search
-                      }
-                    });
-                  },
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: _showAddBrandDialog,
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: _showAddBrandDialog,
-                ),
-              ],
-            ),
-            // --- Brand List Content (Categorized and Searchable) ---
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                // Outer StreamBuilder: fetches all categories
-                stream: FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(currentUser.uid)
-                    .collection('category')
-                    .orderBy('createdAt', descending: false)
-                    .snapshots(),
-                builder: (context, categorySnapshot) {
-                  if (categorySnapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (categorySnapshot.hasError) {
-                    return Center(child: Text('Error loading categories: ${categorySnapshot.error}'));
-                  }
-                  if (!categorySnapshot.hasData || categorySnapshot.data!.docs.isEmpty) {
-                    return const Center(child: Text('No categories found to display brands.'));
-                  }
+                Expanded(
+                  child: _currentlySelectedCategoryIdForMiddlePanel == null
+                      ? StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(currentUser.uid)
+                              .collection('category')
+                              .orderBy('createdAt', descending: false)
+                              .snapshots(),
+                          builder: (context, categorySnapshot) {
+                            if (categorySnapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            if (categorySnapshot.hasError) {
+                              return Center(child: Text('Error loading catalouges: ${categorySnapshot.error}'));
+                            }
+                            if (!categorySnapshot.hasData || categorySnapshot.data!.docs.isEmpty) {
+                              return const Center(child: Text('No catalouges found to display brands.'));
+                            }
 
-                  // Build a ListView of ExpansionTiles, one for each category
-                  return ListView.builder(
-                    itemCount: categorySnapshot.data!.docs.length,
-                    itemBuilder: (context, catIndex) {
-                      final categoryDoc = categorySnapshot.data!.docs[catIndex];
-                      final categoryData = categoryDoc.data() as Map<String, dynamic>?;
-                      final String categoryId = categoryDoc.id;
-                      final String categoryName = (categoryData?['name'] as String?) ?? 'Unnamed Category';
+                            return ListView.builder(
+                              itemCount: categorySnapshot.data!.docs.length,
+                              itemBuilder: (context, catIndex) {
+                                final categoryDoc = categorySnapshot.data!.docs[catIndex];
+                                final categoryData = categoryDoc.data() as Map<String, dynamic>?;
+                                final String categoryId = categoryDoc.id;
+                                final String categoryName = (categoryData?['name'] as String?) ?? 'Unnamed Category';
 
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                        child: ExpansionTile( // Use ExpansionTile for collapsible categories
-                          title: Text(
-                            categoryName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                          ),
-                          children: [
-                            // Inner StreamBuilder: fetches brands for this specific category, filtered by search query
-                            StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(currentUser.uid)
-                                  .collection('category')
-                                  .doc(categoryId) // Get brands only for this category
-                                  .collection('brand')
-                                  .orderBy('name', descending: false) // Order brands by name
-                                  // NEW: Apply brand search filter
-                                  .where('name',
-                                      isGreaterThanOrEqualTo: _brandSearchQuery.isEmpty ? null : _brandSearchQuery)
-                                  .where('name',
-                                      isLessThanOrEqualTo: _brandSearchQuery.isEmpty ? null : _brandSearchQuery + '\uf8ff')
-                                  .snapshots(),
-                              builder: (context, brandSnapshot) {
-                                if (brandSnapshot.connectionState == ConnectionState.waiting) {
-                                  return const Center(child: CircularProgressIndicator());
-                                }
-                                if (brandSnapshot.hasError) {
-                                  return Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: Text('Error loading brands: ${brandSnapshot.error}'),
-                                  );
-                                }
-                                if (!brandSnapshot.hasData || brandSnapshot.data!.docs.isEmpty) {
-                                  return const Padding(
-                                    padding: EdgeInsets.all(8.0),
-                                    child: Text('No brands in this category. Add one!'),
-                                  );
-                                }
+                                return Card(
+                                  margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                  child: ExpansionTile(
+                                    title: Text(
+                                      categoryName,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                                    ),
+                                    children: [
+                                      StreamBuilder<QuerySnapshot>(
+                                        stream: FirebaseFirestore.instance
+                                            .collection('users')
+                                            .doc(currentUser.uid)
+                                            .collection('category')
+                                            .doc(categoryId)
+                                            .collection('brand')
+                                            .orderBy('name', descending: false)
+                                            .where('name',
+                                                isGreaterThanOrEqualTo: _brandSearchQuery.isEmpty ? null : _brandSearchQuery)
+                                            .where('name',
+                                                isLessThanOrEqualTo: _brandSearchQuery.isEmpty ? null : _brandSearchQuery + '\uf8ff')
+                                            .snapshots(),
+                                        builder: (context, brandSnapshot) {
+                                          if (brandSnapshot.connectionState == ConnectionState.waiting) {
+                                            return const Center(child: CircularProgressIndicator());
+                                          }
+                                          if (brandSnapshot.hasError) {
+                                            return Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: Text('Error loading brands: ${brandSnapshot.error}'),
+                                            );
+                                          }
+                                          if (!brandSnapshot.hasData || brandSnapshot.data!.docs.isEmpty) {
+                                            return const Padding(
+                                              padding: EdgeInsets.all(8.0),
+                                              child: Text('No brands in this category. Add one!'),
+                                            );
+                                          }
 
-                                return ListView.builder(
-                                  shrinkWrap: true, // Important: prevents unbounded height error in nested ListView
-                                  physics: const NeverScrollableScrollPhysics(), // Important: for nested scrolling
-                                  itemCount: brandSnapshot.data!.docs.length,
-                                  itemBuilder: (context, brandIndex) {
-                                    final brandDoc = brandSnapshot.data!.docs[brandIndex];
-                                    final brandData = brandDoc.data() as Map<String, dynamic>?;
+                                          return ListView.builder(
+                                            shrinkWrap: true,
+                                            physics: const NeverScrollableScrollPhysics(),
+                                            itemCount: brandSnapshot.data!.docs.length,
+                                            itemBuilder: (context, brandIndex) {
+                                              final brandDoc = brandSnapshot.data!.docs[brandIndex];
+                                              final brandData = brandDoc.data() as Map<String, dynamic>?;
 
-                                    final String brandName = (brandData?['name'] as String?) ?? 'Unnamed Brand';
-                                    final int quantities = (brandData?['quantities'] as num?)?.toInt() ?? 0;
-                                    final String colour = (brandData?['colour'] as String?) ?? 'Unknown';
-                                    final String size = (brandData?['size'] as String?) ?? 'N/A';
-                                    final String description = (brandData?['description'] as String?) ?? 'No description';
-                                    // categoryName is already handled by the parent ExpansionTile's title
+                                              final String brandName = (brandData?['name'] as String?) ?? 'Unnamed Brand';
+                                              final int quantities = (brandData?['quantities'] as num?)?.toInt() ?? 0;
+                                              final String colour = (brandData?['colour'] as String?) ?? 'Unknown';
+                                              final String size = (brandData?['size'] as String?) ?? 'N/A';
+                                              final String price = (brandData?['price'] as String?) ?? '\$0.00';
+                                              final String description = (brandData?['description'] as String?) ?? 'No description';
 
+                                              return Card(
+                                                margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                                child: InkWell(
+                                                  onTap: () {
+                                                    setState(() {
+                                                      _currentlySelectedBrandForPreview = brandDoc;
+                                                    });
+                                                  },
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.all(12.0),
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          brandName,
+                                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                                          overflow: TextOverflow.ellipsis,
+                                                          maxLines: 1,
+                                                        ),
+                                                        const SizedBox(height: 2),
+                                                        Text('Qty: $quantities'),
+                                                        Text('Colour: $colour'),
+                                                        if (size != 'N/A') Text('Size: $size'),
+                                                        Text('Price: $price'),
+                                                        if (description != 'No description') Text('Description: $description'),
+                                                        Align(
+                                                          alignment: Alignment.bottomRight,
+                                                          child: Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              IconButton(
+                                                                icon: const Icon(Icons.edit, color: Colors.blueGrey, size: 18),
+                                                                onPressed: () => _showEditBrandDialog(brandDoc),
+                                                              ),
+                                                              IconButton(
+                                                                icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18),
+                                                                onPressed: () async {
+                                                                  if (!mounted) return;
+                                                                  bool verified = await _reauthenticateUser(context);
+                                                                  if (!verified) {
+                                                                    Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
+                                                                      const SnackBar(content: Text('Deletion cancelled due to verification failure.')),
+                                                                    );
+                                                                    return;
+                                                                  }
+                                                                  try {
+                                                                    await brandDoc.reference.delete();
+                                                                    if (_currentlySelectedBrandForPreview?.id == brandDoc.id) {
+                                                                      setState(() {
+                                                                        _currentlySelectedBrandForPreview = null;
+                                                                      });
+                                                                    }
+                                                                    Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
+                                                                      const SnackBar(content: Text('Brand deleted!')),
+                                                                    );
+                                                                  } catch (e) {
+                                                                    print('Error deleting Brand: $e');
+                                                                    Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
+                                                                      SnackBar(content: Text('Failed to delete Brand: $e')),
+                                                                    );
+                                                                  }
+                                                                },
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        )
+                      : StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(currentUser.uid)
+                              .collection('category')
+                              .doc(_currentlySelectedCategoryIdForMiddlePanel)
+                              .collection('brand')
+                              .orderBy('name', descending: false)
+                              .where('name',
+                                  isGreaterThanOrEqualTo: _brandSearchQuery.isEmpty ? null : _brandSearchQuery)
+                              .where('name',
+                                  isLessThanOrEqualTo: _brandSearchQuery.isEmpty ? null : _brandSearchQuery + '\uf8ff')
+                              .snapshots(),
+                          builder: (context, brandSnapshot) {
+                            if (brandSnapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            if (brandSnapshot.hasError) {
+                              return Center(child: Text('Error loading brands: ${brandSnapshot.error}'));
+                            }
+                            if (!brandSnapshot.hasData || brandSnapshot.data!.docs.isEmpty) {
+                              return const Center(
+                                child: Text('No brands found for this category. Add one!'),
+                              );
+                            }
 
-                                    return Card(
-                                      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                                      child: InkWell(
-                                        onTap: () => _showEditBrandDialog(brandDoc),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(12.0),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                brandName,
-                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), // Smaller font for sub-items
-                                                overflow: TextOverflow.ellipsis,
-                                                maxLines: 1,
-                                              ),
-                                              const SizedBox(height: 2),
-                                              // Removed direct category display as it's the parent ExpansionTile's job
-                                              Text('Qty: $quantities'),
-                                              Text('Colour: $colour'),
-                                              if (size != 'N/A') Text('Size: $size'),
-                                              if (description != 'No description') Text('Description: $description'),
-                                              Align(
-                                                alignment: Alignment.bottomRight,
-                                                child: IconButton(
-                                                  icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18), // Smaller icon
+                            return ListView.builder(
+                              itemCount: brandSnapshot.data!.docs.length,
+                              itemBuilder: (context, brandIndex) {
+                                final brandDoc = brandSnapshot.data!.docs[brandIndex];
+                                final brandData = brandDoc.data() as Map<String, dynamic>?;
+
+                                final String brandName = (brandData?['name'] as String?) ?? 'Unnamed Brand';
+                                final int quantities = (brandData?['quantities'] as num?)?.toInt() ?? 0;
+                                final String colour = (brandData?['colour'] as String?) ?? 'Unknown';
+                                final String size = (brandData?['size'] as String?) ?? 'N/A';
+                                final String price = (brandData?['price'] as String?) ?? '\$0.00';
+                                final String description = (brandData?['description'] as String?) ?? 'No description';
+
+                                return Card(
+                                  margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        _currentlySelectedBrandForPreview = brandDoc;
+                                      });
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12.0),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            brandName,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text('Qty: $quantities'),
+                                          Text('Colour: $colour'),
+                                          if (size != 'N/A') Text('Size: $size'),
+                                          Text('Price: $price'),
+                                          if (description != 'No description') Text('Description: $description'),
+                                          Align(
+                                            alignment: Alignment.bottomRight,
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                IconButton(
+                                                  icon: const Icon(Icons.edit, color: Colors.blueGrey, size: 18),
+                                                  onPressed: () => _showEditBrandDialog(brandDoc),
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18),
                                                   onPressed: () async {
                                                     if (!mounted) return;
 
-                                                    // NEW: Re-authenticate before deleting brand
                                                     bool verified = await _reauthenticateUser(context);
                                                     if (!verified) {
                                                       Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
@@ -1077,6 +1234,11 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
 
                                                     try {
                                                       await brandDoc.reference.delete();
+                                                      if (_currentlySelectedBrandForPreview?.id == brandDoc.id) {
+                                                        setState(() {
+                                                          _currentlySelectedBrandForPreview = null;
+                                                        });
+                                                      }
                                                       Catalouge.scaffoldMessengerKey.currentState?.showSnackBar(
                                                         const SnackBar(content: Text('Brand deleted!')),
                                                       );
@@ -1088,32 +1250,90 @@ class _CatalougeScreenState extends State<CatalougeScreen> {
                                                     }
                                                   },
                                                 ),
-                                              ),
-                                            ],
+                                              ],
+                                            ),
                                           ),
-                                        ),
+                                        ],
                                       ),
-                                    );
-                                  },
+                                    ),
+                                  ),
                                 );
                               },
-                            ),
-                          ],
+                            );
+                          },
                         ),
-                      );
-                    },
-                  );
-                },
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          Expanded(
+            flex: 2,
+            child: _currentlySelectedBrandForPreview == null
+                ? Container(
+                    color: Colors.blueGrey[50],
+                    child: const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                          'Click a brand to see its preview here.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 18, color: Colors.black54),
+                        ),
+                      ),
+                    ),
+                  )
+                : Container(
+                    color: Colors.blueGrey[50],
+                    padding: const EdgeInsets.all(16.0),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Align(
+                            alignment: Alignment.topRight,
+                            child: IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () {
+                                setState(() {
+                                  _currentlySelectedBrandForPreview = null;
+                                });
+                              },
+                            ),
+                          ),
+                          Text(
+                            (_currentlySelectedBrandForPreview!['name'] as String?) ?? 'Unnamed Brand',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Category: ${(_currentlySelectedBrandForPreview!['categoryName'] as String?) ?? 'N/A'}',
+                            style: const TextStyle(fontSize: 16, color: Colors.grey),
+                          ),
+                          Text('Price: ${(_currentlySelectedBrandForPreview!['price'] as String?) ?? '\$0.00'}'),
+                          Text('Quantities: ${(_currentlySelectedBrandForPreview!['quantities'] as num?) ?? 0}'),
+                          Text('Colour: ${(_currentlySelectedBrandForPreview!['colour'] as String?) ?? 'Unknown'}'),
+                          if ((_currentlySelectedBrandForPreview!['size'] as String?) != 'N/A')
+                            Text('Size: ${(_currentlySelectedBrandForPreview!['size'] as String?)}'),
+                          if ((_currentlySelectedBrandForPreview!['description'] as String?) != 'No description')
+                            Text('Description: ${(_currentlySelectedBrandForPreview!['description'] as String?)}'),
+                          const SizedBox(height: 20),
+                          const Divider(),
+                          const Text(
+                            'Additional Brand Preview Details (e.g., images, charts)',
+                            style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
+        ],
       ),
+      drawer: null,
     );
   }
 }
 
-// Extension to check if String is null or empty. (Common utility)
 extension StringExtension on String? {
   bool get isNullOrEmpty => this == null || this!.isEmpty;
 }
