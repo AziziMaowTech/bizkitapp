@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mt_dashboard/ui/views/dasboard/dashboard_view.dart';
+import 'package:mt_dashboard/ui/views/dasboard/desktop/calendar_view.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/catalogue_settings_tab.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/catalouge_view.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/coupon_management_tab.dart';
@@ -266,90 +267,247 @@ class _TabbedSettingsViewState extends State<TabbedSettingsView>
   }
 }
 
-// --- Sidebar Widget ---
+// --- Sidebar Widget (from dashboard_view.desktop.dart) ---
 class Sidebar extends StatelessWidget {
-  const Sidebar({super.key});
+  final bool isExpanded;
+
+  const Sidebar({
+    super.key,
+    required this.isExpanded,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // List of navigation items
+    final navItems = [
+      _SidebarNavItem(
+        icon: Icons.home,
+        label: 'Dashboard',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const DashboardView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.point_of_sale,
+        label: 'POS',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const PosView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.inventory,
+        label: 'Inventory',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const CatalougeView()),
+          );
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.local_shipping,
+      //   label: 'Orders',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const OrdersView()),
+      //     );
+      //   },
+      // ),
+      _SidebarNavItem(
+        icon: Icons.calendar_month,
+        label: 'Calendar',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const CalendarView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.group,
+        label: 'Customers',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const MemberView()),
+          );
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.history,
+      //   label: 'History',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const HistoryView()),
+      //     );
+      //   },
+      // ),
+    ];
+
     return Container(
-      width: 240,
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      width: isExpanded ? 240 : 70,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF8B5CF6),
+            Color(0xFF6F01FD),
+          ],
+        ),
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(24.0),
+          bottomRight: Radius.circular(24.0),
+        ),
+      ),
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
+          const SizedBox(height: 96.0),
           // Branding
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Center(
-              child: Image.asset(
-                'assets/images/placeholder.png',
-                height: 100,
-                width: 100,
-              ),
+              child: isExpanded
+                  ? Image.asset(
+                      'assets/images/placeholder.png',
+                      height: 100,
+                      width: 100,
+                    )
+                  : Image.asset(
+                      'assets/images/placeholder_small.png',
+                      height: 50,
+                      width: 50,
+                    ),
             ),
-          ),
-          const SizedBox(height: 32.0),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.point_of_sale),
-            label: const Text('POS'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              textStyle: const TextStyle(fontWeight: FontWeight.bold),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (context) => PosView()));
-            },
           ),
           const SizedBox(height: 24.0),
-          _SidebarNavItem(icon: Icons.dashboard, label: 'Overview', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => DashboardView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.inventory, label: 'Catalouges', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => CatalougeView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.local_shipping, label: 'Orders', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => OrdersView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.calendar_month, label: 'Calendar', onTap: () {}),
-          _SidebarNavItem(icon: Icons.group, label: 'Members', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => MemberView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.history, label: 'History', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const HistoryView()),
-            );
-          }),
-          const Spacer(),
-          _SidebarNavItem(
-            icon: Icons.settings,
-            label: 'Settings',
-            isSelected: true,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => SettingsView()),
-              );
-            },
+          // Center navigation items vertically
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: navItems,
+              ),
+            ),
           ),
-          _SidebarNavItem(icon: Icons.logout_outlined, label: 'Logout', onTap: () async {
-            await FirebaseAuth.instance.signOut();
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => const HomeView()),
-            );
-          },)
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(24.0),
+                child: InkWell(
+                  onTap: () async {},
+                  borderRadius: BorderRadius.circular(24.0),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24.0),
+                    ),
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(width: 12.0),
+                          Text(
+                            'Basic Plan',
+                            style: TextStyle(
+                              fontSize: 16.0,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF6F01FD),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 16.0 : 0.0, vertical: 8.0),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(24.0),
+              child: InkWell(
+                onTap: () async {
+                  final user = FirebaseAuth.instance.currentUser;
+                  final userId = user?.uid;
+
+                  if (userId != null) {
+                    try {
+                      await FirebaseFirestore.instance.collection('users').doc(userId).collection('activity').add({
+                        'type': 'Logout',
+                        'message': 'User logged out',
+                        'timestamp': FieldValue.serverTimestamp(),
+                      });
+                      print('DEBUG: Logout event logged to "activity" collection for user $userId');
+                    } catch (e) {
+                      print('ERROR: Failed to log logout event for user $userId: $e');
+                    }
+                  }
+
+                  await FirebaseAuth.instance.signOut();
+                  if (!context.mounted) return;
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HomeView()),
+                  );
+                },
+                borderRadius: BorderRadius.circular(24.0),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFB8C63),
+                        Color(0xFFF74403),
+                        Color(0xFFFB8C63),
+                      ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24.0),
+                  ),
+                  child: Container(
+                    height: 48,
+                    alignment: isExpanded ? Alignment.center : Alignment.center,
+                    padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0),
+                    child: isExpanded
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.logout_outlined, color: Colors.white),
+                              SizedBox(width: 12.0),
+                              Text(
+                                'Logout',
+                                style: TextStyle(
+                                  fontSize: 16.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Icon(Icons.logout_outlined, color: Colors.white, size: 24),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -361,6 +519,7 @@ class _SidebarNavItem extends StatelessWidget {
   final String label;
   final bool isSelected;
   final bool isPrimary;
+  final bool isExpanded;
   final VoidCallback onTap;
 
   const _SidebarNavItem({
@@ -369,58 +528,54 @@ class _SidebarNavItem extends StatelessWidget {
     this.isSelected = false,
     this.isPrimary = false,
     required this.onTap,
+    required this.isExpanded,
   });
 
   @override
   Widget build(BuildContext context) {
-    Color itemBackgroundColor = isSelected ? const Color(0xFFDBEAFE) : Colors.transparent;
+    const Color contentBackgroundColor = Color(0xFFF1F5F9);
 
-    Color itemIconColor = isPrimary
-        ? Colors.white
-        : isSelected
-        ? const Color(0xFF3B82F6)
-        : Colors.grey[600]!;
+    Color itemIconColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
 
-    Color itemTextColor = isPrimary
-        ? Colors.white
-        : isSelected
-        ? const Color(0xFF3B82F6)
-        : Colors.grey[800]!;
+    Color itemTextColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
 
-
-    return Material(
-      color: itemBackgroundColor,
-      borderRadius: const BorderRadius.horizontal(right: Radius.circular(12.0)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: const BorderRadius.horizontal(right: Radius.circular(12.0)),
-        child: Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          alignment: Alignment.centerLeft,
-          decoration: isSelected
-              ? const BoxDecoration(
-            border: Border(left: BorderSide(color: Color(0xFF3B82F6), width: 3.0)),
-          )
-              : null,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: itemIconColor,
-              ),
-              const SizedBox(width: 12.0),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 16.0,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: itemTextColor,
-                ),
-              ),
-              if (isPrimary) const Spacer(),
-            ],
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Material(
+        color: isSelected ? contentBackgroundColor : Colors.transparent,
+        borderRadius: isSelected
+            ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+            : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: isSelected
+              ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+              : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+          child: Container(
+            height: 48,
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0.0),
+            alignment: isExpanded ? Alignment.centerLeft : Alignment.center,
+            child: isExpanded
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        color: itemIconColor,
+                      ),
+                      const SizedBox(width: 12.0),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16.0,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: itemTextColor,
+                        ),
+                      ),
+                    ],
+                  )
+                : Icon(icon, color: itemIconColor, size: 24),
           ),
         ),
       ),
@@ -436,21 +591,37 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  bool _isSidebarExpanded = true;
+  bool _isSidebarExpanded = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Row(
         children: [
-          SizedBox(
-            width: _isSidebarExpanded ? 240 : 70,
-            child: const Sidebar(),
+          // Sidebar
+          MouseRegion(
+            onEnter: (event) {
+              setState(() {
+                _isSidebarExpanded = true;
+              });
+            },
+            onExit: (event) {
+              setState(() {
+                _isSidebarExpanded = false;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: _isSidebarExpanded ? 240 : 70,
+              child: Sidebar(
+                isExpanded: _isSidebarExpanded,
+              ),
+            ),
           ),
           Expanded(
             child: Column(
               children: [
-                const CustomAppBar(),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(24.0),

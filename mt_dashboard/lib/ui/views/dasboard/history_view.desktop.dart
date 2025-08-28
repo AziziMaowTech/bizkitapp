@@ -9,6 +9,7 @@ import 'package:mt_dashboard/ui/views/dasboard/desktop/orders_view.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/pos_view.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/pos_view.desktop.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/settings_view.dart';
+import 'package:mt_dashboard/ui/views/dasboard/history_view.dart';
 import 'package:mt_dashboard/ui/views/home/home_view.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'dart:io';
@@ -40,22 +41,22 @@ class HistoryViewDesktop extends StatelessWidget {
           color: Colors.white,
           elevation: 0.5,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.0),
+            borderRadius: BorderRadius.circular(30.0),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: BorderSide.none, // No border
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: const BorderSide(color: Colors.blue, width: 1.0), // Blue border on focus
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -76,7 +77,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   // A simple state for sidebar expansion, not fully interactive for this example
-  bool _isSidebarExpanded = true;
+  bool _isSidebarExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -84,16 +85,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: Row(
         children: [
           // Sidebar
-          SizedBox(
-            width: _isSidebarExpanded ? 240 : 70, // Adjust width based on expansion state
-            child: const Sidebar(),
+          MouseRegion(
+            onEnter: (event) {
+              setState(() {
+                _isSidebarExpanded = true;
+              });
+            },
+            onExit: (event) {
+              setState(() {
+                _isSidebarExpanded = false;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: _isSidebarExpanded ? 240 : 70,
+              child: Sidebar(
+                isExpanded: _isSidebarExpanded,
+              ),
+            ),
           ),
           // Main Content Area
           Expanded(
             child: Column(
               children: [
-                // Top App Bar
-                const CustomAppBar(),
                 // Main Dashboard Content
                 Expanded(
                   child: SingleChildScrollView(
@@ -143,16 +158,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// --- Sidebar Widget ---
+// --- Sidebar Widget (unchanged) ---
 class Sidebar extends StatelessWidget {
-  const Sidebar({super.key});
+  final bool isExpanded;
+
+  const Sidebar({
+    super.key,
+    required this.isExpanded,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 240, // Fixed width for the sidebar
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      width: isExpanded ? 240 : 70, // Fixed width for the sidebar
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF8B5CF6), // Lighter purple
+            Color(0xFF6F01FD), // Original purple
+          ],
+        ),
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(24.0), // Top-right curve
+          bottomRight: Radius.circular(24.0), // Bottom-right curve
+        ),
+      ),
+      padding: EdgeInsets.zero, // Changed this line to remove padding
       child: Column(
         children: [
           // Branding
@@ -160,134 +193,187 @@ class Sidebar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Center(
               child: Image.asset(
-              'assets/images/placeholder.png',
-              height: 100,
-              width: 100,
-              // errorBuilder: (context, error, stackTrace) => const Icon(Icons.medical_services, color: Color(0xFF1E40AF), size: 32),
+                'assets/images/placeholder.png',
+                height: isExpanded ? 100 : 0, // Smaller when minimized
+                width: isExpanded ? 100 : 0, // Smaller when minimized
               ),
             ),
-            ),
-            const SizedBox(height: 32.0),
-            ElevatedButton.icon(
-            icon: const Icon(Icons.point_of_sale),
-            label: const Text('POS'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              textStyle: const TextStyle(fontWeight: FontWeight.bold),
-              shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (context) => PosView()));
-            },
           ),
-          // const SizedBox(height: 32.0),
-          // Navigation Items
-          // _SidebarNavItem(icon: Icons.app_registration, label: 'Add Product', onTap: () {}),
+          const SizedBox(height: 32.0),
+          if (isExpanded) // Only show POS button when expanded
+            ElevatedButton.icon(
+              icon: const Icon(Icons.point_of_sale),
+              label: const Text('POS'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF8B5CF6),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(builder: (context) => PosView()));
+              },
+            ) else
+            const SizedBox(height: 132),
           const SizedBox(height: 24.0),
-          _SidebarNavItem(icon: Icons.dashboard, label: 'Overview', onTap: () {
+          _SidebarNavItem(
+              icon: Icons.home,
+              label: 'Dashboard',
+              isExpanded: isExpanded,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const DashboardView()),
+                );
+              }),
+          _SidebarNavItem(icon: Icons.inventory, label: 'Inventory', isExpanded: isExpanded, onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => DashboardView()),
-              );
-          }), // Spacer before other nav items
-          _SidebarNavItem(icon: Icons.inventory, label: 'Catalouges', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => CatalougeView()),
-              );
-          }),
-          _SidebarNavItem(icon: Icons.local_shipping, label: 'Orders', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => OrdersView()
-            ),
+              MaterialPageRoute(builder: (context) => const CatalougeView()),
             );
           }),
-          _SidebarNavItem(icon: Icons.calendar_month, label: 'Calendar', onTap: () {
+          _SidebarNavItem(icon: Icons.local_shipping, label: 'Orders', isExpanded: isExpanded, onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const OrdersView()),
+            );
+          }),
+          _SidebarNavItem(icon: Icons.calendar_month, label: 'Calendar', isExpanded: isExpanded, onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (context) => const CalendarView()),
             );
           }),
-          _SidebarNavItem(icon: Icons.group, label: 'Members', onTap: () {
+          _SidebarNavItem(icon: Icons.group, label: 'Customers', isExpanded: isExpanded, onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => MemberView()),
-              );
-          }),
-          _SidebarNavItem(icon: Icons.history, label: 'History', isSelected: true, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const HistoryViewDesktop()),
+              MaterialPageRoute(builder: (context) => const MemberView()),
             );
           }),
-          const Spacer(), // Pushes "Get mobile app" to bottom
-            _SidebarNavItem(
-            icon: Icons.settings,
-            label: 'Settings',
-            onTap: () {
-              Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => SettingsView()),
-              );
-            },
+          _SidebarNavItem(icon: Icons.history, label: 'History',
+              isSelected: true, isExpanded: isExpanded, onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const HistoryView()),
+            );
+          }),
+          const Spacer(),
+          // _SidebarNavItem(
+          //   icon: Icons.settings,
+          //   label: 'Settings',
+          //   isExpanded: isExpanded,
+          //   onTap: () {
+          //     Navigator.of(context).push(
+          //       MaterialPageRoute(builder: (context) => const SettingsView()),
+          //     );
+          //   },
+          // ),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(24.0),
+              child: InkWell(
+                onTap: () async {},
+                borderRadius: BorderRadius.circular(24.0),
+                child: Ink(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24.0),
+                ),
+                child: Container(
+                  height: 48,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(width: 12.0),
+                    Text(
+                    'Basic Plan',
+                    style: TextStyle(
+                      fontSize: 16.0,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF6F01FD),
+                    ),
+                    ),
+                  ],
+                  ),
+                ),
+                ),
+              ),
+              ),
             ),
-            _SidebarNavItem(icon: Icons.logout_outlined, label: 'Logout', onTap: () async {
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 16.0 : 0.0, vertical: 8.0),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(24.0),
+              child: InkWell(
+                onTap: () async {
+                  final user = FirebaseAuth.instance.currentUser;
+                  final userId = user?.uid;
+
+                  if (userId != null) {
+                    try {
+                      await FirebaseFirestore.instance.collection('users').doc(userId).collection('activity').add({
+                        'type': 'Logout',
+                        'message': 'User logged out',
+                        'timestamp': FieldValue.serverTimestamp(),
+                      });
+                      print('DEBUG: Logout event logged to "activity" collection for user $userId');
+                    } catch (e) {
+                      print('ERROR: Failed to log logout event for user $userId: $e');
+                    }
+                  }
+
                   await FirebaseAuth.instance.signOut();
-                  // Optionally, show a snackbar or navigate to login/home page
-                   Navigator.of(context).pushReplacement(
+                  if (!context.mounted) return;
+                  Navigator.pushReplacement(
+                    context,
                     MaterialPageRoute(builder: (context) => const HomeView()),
                   );
-                },)
-          // const SizedBox(height: 24.0),
-          // Get mobile app card
-          // Padding(
-          //   padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          //   child: Card(
-          //     color: const Color(0xFFEFF6FF), // Light blue background
-          //     elevation: 0,
-          //     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-          //     child: Padding(
-          //       padding: const EdgeInsets.all(16.0),
-          //       child: Column(
-          //         children: [
-          //           Image.network(
-          //             'https://placehold.co/80x80/E0E7FF/4F46E5?text=App', // Placeholder for mobile app icon
-          //             errorBuilder: (context, error, stackTrace) => const Icon(Icons.phone_android, color: Colors.blueAccent, size: 60),
-          //           ),
-          //           const SizedBox(height: 8.0),
-          //           const Text(
-          //             'Get mobile app',
-          //             style: TextStyle(
-          //               fontSize: 16.0,
-          //               fontWeight: FontWeight.bold,
-          //               color: Color(0xFF1E40AF),
-          //             ),
-          //             textAlign: TextAlign.center,
-          //           ),
-          //           const SizedBox(height: 8.0),
-          //           Row(
-          //             mainAxisAlignment: MainAxisAlignment.center,
-          //             children: [
-          //               // Placeholder for App Store icon
-          //               Image.network(
-          //                 'https://placehold.co/24x24/FFFFFF/000000?text=A',
-          //                 errorBuilder: (context, error, stackTrace) => const Icon(Icons.apple, size: 24, color: Colors.grey),
-          //                 height: 24,
-          //                 width: 24,
-          //               ),
-          //               const SizedBox(width: 8.0),
-          //               // Placeholder for Google Play icon
-          //               Image.network(
-          //                 'https://placehold.co/24x24/FFFFFF/000000?text=G',
-          //                 errorBuilder: (context, error, stackTrace) => const Icon(Icons.android, size: 24, color: Colors.grey),
-          //                 height: 24,
-          //                 width: 24,
-          //               ),
-          //             ],
-          //           ),
-          //         ],
-          //       ),
-          //     ),
-          //   ),
-          // ),
+                },
+                borderRadius: BorderRadius.circular(24.0),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFB8C63),
+                        Color(0xFFF74403),
+                        Color(0xFFFB8C63),
+                      ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24.0),
+                  ),
+                  child: Container(
+                    height: 48,
+                    alignment: isExpanded ? Alignment.center : Alignment.center,
+                    padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0),
+                    child: isExpanded
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.logout_outlined, color: Colors.white),
+                              SizedBox(width: 12.0),
+                              Text(
+                                'Logout',
+                                style: TextStyle(
+                                  fontSize: 16.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Icon(Icons.logout_outlined, color: Colors.white, size: 24),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -299,66 +385,65 @@ class _SidebarNavItem extends StatelessWidget {
   final String label;
   final bool isSelected;
   final bool isPrimary;
+  final bool isExpanded;
   final VoidCallback onTap;
 
   const _SidebarNavItem({
+    super.key,
     required this.icon,
     required this.label,
     this.isSelected = false,
     this.isPrimary = false,
     required this.onTap,
+    required this.isExpanded,
   });
 
   @override
   Widget build(BuildContext context) {
-    Color itemBackgroundColor = isSelected ? const Color(0xFFDBEAFE) : Colors.transparent; // Blue-100 for selected
+    const Color contentBackgroundColor = Color(0xFFF1F5F9);
 
-    Color itemIconColor = isPrimary
-        ? Colors.white // Primary button icon color
-        : isSelected
-            ? const Color(0xFF3B82F6) // Blue-500 for selected icon
-            : Colors.grey[600]!; // Default grey icon color
+    Color itemIconColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
 
-    Color itemTextColor = isPrimary
-        ? Colors.white // Primary button text color
-        : isSelected
-            ? const Color(0xFF3B82F6) // Blue-500 for selected text
-            : Colors.grey[800]!; // Default grey text color
+    Color itemTextColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
 
-
-    return Material(
-      color: itemBackgroundColor,
-      borderRadius: const BorderRadius.horizontal(right: Radius.circular(12.0)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: const BorderRadius.horizontal(right: Radius.circular(12.0)),
-        child: Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          alignment: Alignment.centerLeft,
-          decoration: isSelected
-              ? const BoxDecoration(
-                  border: Border(left: BorderSide(color: Color(0xFF3B82F6), width: 3.0)), // Blue-500
-                )
-              : null,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: itemIconColor,
-              ),
-              const SizedBox(width: 12.0),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 16.0,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: itemTextColor,
-                ),
-              ),
-              if (isPrimary) const Spacer(), // Pushes icon to right (for Register patient)
-            ],
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Material(
+        color: isSelected ? contentBackgroundColor : Colors.transparent,
+        borderRadius: isSelected
+            ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+            : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: isSelected
+              ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+              : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+          child: Container(
+            height: 48,
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0.0),
+            alignment: isExpanded ? Alignment.centerLeft : Alignment.center,
+            decoration: isSelected ? null : null,
+            child: isExpanded
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        color: itemIconColor,
+                      ),
+                      const SizedBox(width: 12.0),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16.0,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: itemTextColor,
+                        ),
+                      ),
+                    ],
+                  )
+                : Icon(icon, color: itemIconColor, size: 24),
           ),
         ),
       ),
@@ -377,7 +462,7 @@ class SalesCard extends StatelessWidget {
       height: 600, // Increased height for better visibility of scrollable content
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8.0),
+        borderRadius: BorderRadius.circular(30.0),
         boxShadow: [
           BoxShadow(
             color: Colors.grey[300]!,
@@ -455,7 +540,7 @@ class SalesCard extends StatelessWidget {
                         return Card(
                           margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
                           elevation: 1,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                           child: Padding(
                             padding: const EdgeInsets.all(12.0),
                             child: Column(
@@ -578,7 +663,7 @@ class ActivityCard extends StatelessWidget {
       height: 600, // Increased height for better visibility of scrollable content
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8.0),
+        borderRadius: BorderRadius.circular(30.0),
         boxShadow: [
           BoxShadow(
             color: Colors.grey[300]!,
@@ -637,7 +722,7 @@ class ActivityCard extends StatelessWidget {
                                               return Card(
                                                 margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 0), // Adjust margin for inner cards
                                                 elevation: 1,
-                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                                                 color: logType == 'Login' ? Colors.blue[50] : Colors.red[50],
                                                 child: Padding(
                                                   padding: const EdgeInsets.all(12.0),

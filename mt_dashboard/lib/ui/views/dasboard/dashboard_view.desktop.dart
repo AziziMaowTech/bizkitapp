@@ -911,102 +911,166 @@ class Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // List of navigation items
+    final navItems = [
+      _SidebarNavItem(
+        icon: Icons.home,
+        label: 'Dashboard',
+        isSelected: true,
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const DashboardView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.point_of_sale,
+        label: 'POS',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const PosView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.inventory,
+        label: 'Inventory',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const CatalougeView()),
+          );
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.local_shipping,
+      //   label: 'Orders',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const OrdersView()),
+      //     );
+      //   },
+      // ),
+      _SidebarNavItem(
+        icon: Icons.calendar_month,
+        label: 'Calendar',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const CalendarView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.group,
+        label: 'Customers',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const MemberView()),
+          );
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.history,
+      //   label: 'History',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const HistoryView()),
+      //     );
+      //   },
+      // ),
+    ];
+
     return Container(
-      width: isExpanded ? 240 : 70, // Fixed width for the sidebar
+      width: isExpanded ? 240 : 70,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF8B5CF6), // Lighter purple
-            Color(0xFF6F01FD), // Original purple
+            Color(0xFF8B5CF6),
+            Color(0xFF6F01FD),
           ],
         ),
         borderRadius: BorderRadius.only(
-          topRight: Radius.circular(24.0), // Top-right curve
-          bottomRight: Radius.circular(24.0), // Bottom-right curve
+          topRight: Radius.circular(24.0),
+          bottomRight: Radius.circular(24.0),
         ),
       ),
-      padding: EdgeInsets.zero, // Changed this line to remove padding
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
+          const SizedBox(height: 96.0),
           // Branding
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Center(
-              child: Image.asset(
-                'assets/images/placeholder.png',
-                height: isExpanded ? 100 : 0, // Smaller when minimized
-                width: isExpanded ? 100 : 0, // Smaller when minimized
+              child: isExpanded
+                  ? Image.asset(
+                      'assets/images/placeholder.png',
+                      height: 100,
+                      width: 100,
+                    )
+                  : Image.asset(
+                      'assets/images/placeholder_small.png',
+                      height: 50,
+                      width: 50,
+                    ),
+            ),
+          ),
+          const SizedBox(height: 24.0),
+          // Center navigation items vertically
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: navItems,
               ),
             ),
           ),
-          const SizedBox(height: 32.0),
-          if (isExpanded) // Only show POS button when expanded
-            ElevatedButton.icon(
-              icon: const Icon(Icons.point_of_sale),
-              label: const Text('POS'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF8B5CF6),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(24.0),
+                child: InkWell(
+                  onTap: () async {},
+                  borderRadius: BorderRadius.circular(24.0),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24.0),
+                    ),
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(width: 12.0),
+                          Text(
+                            'Basic Plan',
+                            style: TextStyle(
+                              fontSize: 16.0,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF6F01FD),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              onPressed: () {
-                Navigator.of(context).push(MaterialPageRoute(builder: (context) => PosView()));
-              },
-            ) else
-            const SizedBox(height: 132),
-          const SizedBox(height: 24.0),
-          _SidebarNavItem(
-              icon: Icons.home,
-              label: 'Dashboard',
-              isSelected: true,
-              isExpanded: isExpanded,
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const DashboardView()),
-                );
-              }),
-          _SidebarNavItem(icon: Icons.inventory, label: 'Catalouges', isExpanded: isExpanded, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const CatalougeView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.local_shipping, label: 'Orders', isExpanded: isExpanded, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const OrdersView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.calendar_month, label: 'Calendar', isExpanded: isExpanded, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const CalendarView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.group, label: 'Members', isExpanded: isExpanded, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const MemberView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.history, label: 'History', isExpanded: isExpanded, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const HistoryView()),
-            );
-          }),
-          const Spacer(),
-          _SidebarNavItem(
-            icon: Icons.settings,
-            label: 'Settings',
-            isExpanded: isExpanded,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const SettingsView()),
-              );
-            },
-          ),
+            ),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: isExpanded ? 16.0 : 0.0, vertical: 8.0),
             child: Material(

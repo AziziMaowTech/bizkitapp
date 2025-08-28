@@ -1,8 +1,15 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 // These imports are from your original code, ensure they are correctly mapped
 import 'package:mt_dashboard/ui/views/dasboard/dashboard_view.dart';
+import 'package:mt_dashboard/ui/views/dasboard/desktop/calendar_view.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/catalouge_view.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/member_view.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/orders_view.dart';
@@ -18,6 +25,177 @@ import 'package:intl/intl.dart'; // For date formatting in UI
 
 void main() {
   runApp(const CalendarViewDesktop());
+}
+
+// --- User Dropdown Card Widget from dashboard_view.desktop.dart ---
+class _UserDropdownCard extends StatelessWidget {
+  final String? userId;
+  final FirebaseFirestore firestore;
+
+  const _UserDropdownCard({
+    Key? key,
+    required this.userId,
+    required this.firestore,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    if (userId == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text('No user info available.'),
+        ),
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: firestore.collection('users').doc(userId).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+        if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text('Error loading user info.'),
+            ),
+          );
+        }
+
+        final userData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
+        final displayName = userData['name'] as String? ?? 'User';
+        final email = userData['email'] as String? ?? 'No email';
+        // Updated to use 'profilePictureUrl' for the profile image
+        final profilePictureUrl = userData['profilePictureUrl'] as String?;
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                // Wrap CircleAvatar with GestureDetector for tap functionality
+                GestureDetector(
+                  onTap: () async {
+                    if (userId != null) {
+                      await _changeProfilePicture(context, userId!, firestore);
+                    }
+                  },
+                  child: CircleAvatar(
+                    radius: 24,
+                    backgroundImage: profilePictureUrl != null ? NetworkImage(profilePictureUrl) : null,
+                    child: profilePictureUrl == null ? const Icon(Icons.person, size: 32) : null,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        displayName,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        email,
+                        style: const TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.arrow_drop_down),
+                  onSelected: (value) {
+                    if (value == 'Logout') {
+                      FirebaseAuth.instance.signOut();
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (context) => const HomeView()),
+                      );
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'Logout',
+                      child: Text('Logout'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Function to handle changing profile picture
+  Future<void> _changeProfilePicture(BuildContext context, String userId, FirebaseFirestore firestore) async {
+    final ImagePicker picker = ImagePicker();
+    XFile? image;
+
+    if (kIsWeb) {
+      // Web specific file picking
+      final result = await FilePicker.platform.pickFiles(type: FileType.image);
+      if (result != null && result.files.single.bytes != null) {
+        final fileName = result.files.single.name;
+        final fileBytes = result.files.single.bytes!;
+        image = XFile.fromData(fileBytes, name: fileName);
+      }
+    } else {
+      // Mobile specific image picking
+      image = await picker.pickImage(source: ImageSource.gallery);
+    }
+
+    if (image != null) {
+      try {
+        // Upload image to Firebase Storage
+        final storageRef = FirebaseStorage.instance.ref().child('profile_pictures').child('$userId/${image.name}');
+        UploadTask uploadTask;
+
+        if (kIsWeb) {
+          uploadTask = storageRef.putData(await image.readAsBytes());
+        } else {
+          uploadTask = storageRef.putFile(File(image.path));
+        }
+
+        final snapshot = await uploadTask;
+        final downloadUrl = await snapshot.ref.getDownloadURL();
+
+        // Update profilePictureUrl in Firestore
+        await firestore.collection('users').doc(userId).update({
+          'profilePictureUrl': downloadUrl,
+        });
+
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile picture updated successfully!')),
+        );
+      } on FirebaseException catch (e) {
+        print('Error uploading profile picture: ${e.message}');
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update profile picture: ${e.message}')),
+        );
+      } catch (e) {
+        print('Unexpected error: $e');
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('An unexpected error occurred: $e')),
+        );
+      }
+    } else {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No image selected.')),
+      );
+    }
+  }
 }
 
 class CalendarViewDesktop extends StatelessWidget {
@@ -36,22 +214,22 @@ class CalendarViewDesktop extends StatelessWidget {
           color: Colors.white,
           elevation: 0.5,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.0),
+            borderRadius: BorderRadius.circular(30.0),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: const BorderSide(color: Colors.blue, width: 1.0),
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -71,34 +249,115 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  bool _isSidebarExpanded = true;
+  bool _isSidebarExpanded = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Row(
         children: [
-          SizedBox(
-            width: _isSidebarExpanded ? 240 : 70,
-            child: const Sidebar(),
+          // Sidebar
+          MouseRegion(
+            onEnter: (event) {
+              setState(() {
+                _isSidebarExpanded = true;
+              });
+            },
+            onExit: (event) {
+              setState(() {
+                _isSidebarExpanded = false;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: _isSidebarExpanded ? 240 : 70,
+              child: Sidebar(
+                isExpanded: _isSidebarExpanded,
+              ),
+            ),
           ),
+          // Main Content Area
           Expanded(
             child: Column(
               children: [
-                const CustomAppBar(),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min, // Crucial for a Column inside SingleChildScrollView
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min, // Crucial for a Row inside a Column that's mainAxisSize.min
                           children: [
-                            const Expanded( // This Expanded is now safely within a Column/Row with mainAxisSize.min, which will work.
+                            Expanded(
+                              flex: 2, // Adjust flex to give more space to the left card
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start, // Align to the left
+                                children: [
+                                  Text(
+                                    'Calendar',
+                                    style: TextStyle(
+                                      fontSize: 60.0,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey[800],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 24.0),
+                            Expanded(
+                              flex: 1, // Adjust flex for the right card
+                              child: Column(
+                                children: [
+                                  Row(
+                                    // New Row for User Info Card and Buttons
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(width: 16.0),
+                                      IconButton(
+                                        icon: Icon(Icons.notifications_none, color: Colors.grey[600]),
+                                        onPressed: () {},
+                                      ),
+                                      const SizedBox(width: 16.0),
+                                      IconButton(
+                                        icon: Icon(Icons.settings_outlined, color: Colors.grey[600]),
+                                        onPressed: () {
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(builder: (context) => const SettingsView()),
+                                          );
+                                        },
+                                      ),
+                                      const SizedBox(width: 24.0),
+                                      Expanded(
+                                        child: _UserDropdownCard(
+                                          userId: FirebaseAuth.instance.currentUser?.uid,
+                                          firestore: FirebaseFirestore.instance,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24.0),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // New card for memos on the left
+                            Expanded(
                               flex: 1,
+                              child: MemosCard(),
+                            ),
+                            SizedBox(width: 24.0), // Spacer between the cards
+                            // Existing Calendar card on the right
+                            Expanded(
+                              flex: 2,
                               child: CalendarCard(),
                             ),
                           ],
@@ -116,91 +375,246 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 }
 
+// --- Sidebar Widget (from dashboard_view.desktop.dart) ---
 class Sidebar extends StatelessWidget {
-  const Sidebar({super.key});
+  final bool isExpanded;
+
+  const Sidebar({
+    super.key,
+    required this.isExpanded,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // List of navigation items
+    final navItems = [
+      _SidebarNavItem(
+        icon: Icons.home,
+        label: 'Dashboard',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const DashboardView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.point_of_sale,
+        label: 'POS',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const PosView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.inventory,
+        label: 'Inventory',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const CatalougeView()),
+          );
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.local_shipping,
+      //   label: 'Orders',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const OrdersView()),
+      //     );
+      //   },
+      // ),
+      _SidebarNavItem(
+        icon: Icons.calendar_month,
+        label: 'Calendar',
+        isSelected: true, // This is the selected item
+        isExpanded: isExpanded,
+        onTap: () {
+          // Already on this page
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.group,
+        label: 'Customers',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const MemberView()),
+          );
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.history,
+      //   label: 'History',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const HistoryView()),
+      //     );
+      //   },
+      // ),
+    ];
+
     return Container(
-      width: 240,
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      width: isExpanded ? 240 : 70,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF8B5CF6),
+            Color(0xFF6F01FD),
+          ],
+        ),
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(24.0),
+          bottomRight: Radius.circular(24.0),
+        ),
+      ),
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
+          const SizedBox(height: 96.0),
+          // Branding
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Center(
-              child: Image.asset(
-                'assets/images/placeholder.png',
-                height: 100,
-                width: 100,
-              ),
+              child: isExpanded
+                  ? Image.asset(
+                      'assets/images/placeholder.png',
+                      height: 100,
+                      width: 100,
+                    )
+                  : Image.asset(
+                      'assets/images/placeholder_small.png',
+                      height: 50,
+                      width: 50,
+                    ),
             ),
-          ),
-          const SizedBox(height: 32.0),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.point_of_sale),
-            label: const Text('POS'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              textStyle: const TextStyle(fontWeight: FontWeight.bold),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (context) => PosView()));
-            },
           ),
           const SizedBox(height: 24.0),
-          _SidebarNavItem(icon: Icons.dashboard, label: 'Overview', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => DashboardView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.inventory, label: 'Catalouges', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => CatalougeView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.local_shipping, label: 'Orders', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => OrdersView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.calendar_month, label: 'Calendar', isSelected: true, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const CalendarViewDesktop()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.group, label: 'Members', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => MemberView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.history, label: 'History', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const HistoryView()),
-            );
-          }),
-          const Spacer(),
-          _SidebarNavItem(
-            icon: Icons.settings,
-            label: 'Settings',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => SettingsView()),
-              );
-            },
+          // Center navigation items vertically
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: navItems,
+              ),
+            ),
           ),
-          _SidebarNavItem(icon: Icons.logout_outlined, label: 'Logout', onTap: () async {
-            await FirebaseAuth.instance.signOut();
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => const HomeView()),
-            );
-          }),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(24.0),
+                child: InkWell(
+                  onTap: () async {},
+                  borderRadius: BorderRadius.circular(24.0),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24.0),
+                    ),
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(width: 12.0),
+                          Text(
+                            'Basic Plan',
+                            style: TextStyle(
+                              fontSize: 16.0,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF6F01FD),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 16.0 : 0.0, vertical: 8.0),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(24.0),
+              child: InkWell(
+                onTap: () async {
+                  final user = FirebaseAuth.instance.currentUser;
+                  final userId = user?.uid;
+
+                  if (userId != null) {
+                    try {
+                      await FirebaseFirestore.instance.collection('users').doc(userId).collection('activity').add({
+                        'type': 'Logout',
+                        'message': 'User logged out',
+                        'timestamp': FieldValue.serverTimestamp(),
+                      });
+                      print('DEBUG: Logout event logged to "activity" collection for user $userId');
+                    } catch (e) {
+                      print('ERROR: Failed to log logout event for user $userId: $e');
+                    }
+                  }
+
+                  await FirebaseAuth.instance.signOut();
+                  if (!context.mounted) return;
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HomeView()),
+                  );
+                },
+                borderRadius: BorderRadius.circular(24.0),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFB8C63),
+                        Color(0xFFF74403),
+                        Color(0xFFFB8C63),
+                      ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24.0),
+                  ),
+                  child: Container(
+                    height: 48,
+                    alignment: isExpanded ? Alignment.center : Alignment.center,
+                    padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0),
+                    child: isExpanded
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.logout_outlined, color: Colors.white),
+                              SizedBox(width: 12.0),
+                              Text(
+                                'Logout',
+                                style: TextStyle(
+                                  fontSize: 16.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Icon(Icons.logout_outlined, color: Colors.white, size: 24),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -212,6 +626,7 @@ class _SidebarNavItem extends StatelessWidget {
   final String label;
   final bool isSelected;
   final bool isPrimary;
+  final bool isExpanded;
   final VoidCallback onTap;
 
   const _SidebarNavItem({
@@ -220,55 +635,54 @@ class _SidebarNavItem extends StatelessWidget {
     this.isSelected = false,
     this.isPrimary = false,
     required this.onTap,
+    required this.isExpanded,
   });
 
   @override
   Widget build(BuildContext context) {
-    Color itemBackgroundColor = isSelected ? const Color(0xFFDBEAFE) : Colors.transparent;
-    Color itemIconColor = isPrimary
-        ? Colors.white
-        : isSelected
-            ? const Color(0xFF3B82F6)
-            : Colors.grey[600]!;
-    Color itemTextColor = isPrimary
-        ? Colors.white
-        : isSelected
-            ? const Color(0xFF3B82F6)
-            : Colors.grey[800]!;
+    const Color contentBackgroundColor = Color(0xFFF1F5F9);
 
-    return Material(
-      color: itemBackgroundColor,
-      borderRadius: const BorderRadius.horizontal(right: Radius.circular(12.0)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: const BorderRadius.horizontal(right: Radius.circular(12.0)),
-        child: Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          alignment: Alignment.centerLeft,
-          decoration: isSelected
-              ? const BoxDecoration(
-                  border: Border(left: BorderSide(color: Color(0xFF3B82F6), width: 3.0)),
-                )
-              : null,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: itemIconColor,
-              ),
-              const SizedBox(width: 12.0),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 16.0,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: itemTextColor,
-                ),
-              ),
-              if (isPrimary) const Spacer(),
-            ],
+    Color itemIconColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
+
+    Color itemTextColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Material(
+        color: isSelected ? contentBackgroundColor : Colors.transparent,
+        borderRadius: isSelected
+            ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+            : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: isSelected
+              ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+              : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+          child: Container(
+            height: 48,
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0.0),
+            alignment: isExpanded ? Alignment.centerLeft : Alignment.center,
+            child: isExpanded
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        color: itemIconColor,
+                      ),
+                      const SizedBox(width: 12.0),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16.0,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: itemTextColor,
+                        ),
+                      ),
+                    ],
+                  )
+                : Icon(icon, color: itemIconColor, size: 24),
           ),
         ),
       ),
@@ -276,82 +690,22 @@ class _SidebarNavItem extends StatelessWidget {
   }
 }
 
-class CalendarCard extends StatefulWidget {
-  const CalendarCard({super.key});
+// New MemosCard widget
+class MemosCard extends StatefulWidget {
+  const MemosCard({super.key});
 
   @override
-  State<CalendarCard> createState() => _CalendarCardState();
+  State<MemosCard> createState() => _MemosCardState();
 }
 
-class _CalendarCardState extends State<CalendarCard> {
-  CalendarFormat _calendarFormat = CalendarFormat.month;
-  DateTime _focusedDay = DateTime.now();
-  DateTime? _selectedDay;
-  Set<DateTime> _datesWithMemos = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedDay = _focusedDay;
-    _loadDatesWithMemos();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-  Future<void> _loadDatesWithMemos() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('calendar')
-          .get();
-
-      setState(() {
-        _datesWithMemos = snapshot.docs
-            .map((doc) => DateTime.parse(doc.id))
-            .toSet();
-      });
-    }
-  }
-
+class _MemosCardState extends State<MemosCard> {
   // --- FIX: _showSnackBar now correctly checks if widget is mounted ---
   void _showSnackBar(BuildContext context, String message) {
-    if (mounted) { // Ensure the widget (CalendarCardState) is still in the tree before using its context
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
       );
     }
-  }
-
-  // Function to show memo management dialog for a new memo (from calendar date tap)
-  void _showMemoManagementDialogForDate(BuildContext context, DateTime date) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      _showSnackBar(context, 'Please log in to manage memos.');
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return _MemoDialog(
-          selectedDate: date,
-          userId: user.uid,
-          onMemoUpdated: () {
-            _loadDatesWithMemos();
-          },
-          onShowSnackBar: (message) {
-            _showSnackBar(context, message);
-          },
-          initialMemoId: null,      // No initial ID for new memo
-          initialMemoText: null,  // No initial text for new memo
-        );
-      },
-    );
   }
 
   // Function to show memo management dialog for an EXISTING memo (from list tap)
@@ -362,17 +716,16 @@ class _CalendarCardState extends State<CalendarCard> {
       _showSnackBar(context, 'Please log in to manage memos.');
       return;
     }
-
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return _MemoDialog(
           selectedDate: date,
           userId: user.uid,
-          initialMemoId: memoId,      // Pass existing memo ID
-          initialMemoText: memoText,  // Pass existing memo text
+          initialMemoId: memoId,
+          initialMemoText: memoText,
           onMemoUpdated: () {
-            _loadDatesWithMemos();
+            // This function is for memos, so it doesn't need to do anything with the calendar
           },
           onShowSnackBar: (message) {
             _showSnackBar(context, message);
@@ -385,34 +738,16 @@ class _CalendarCardState extends State<CalendarCard> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-
     final DateTime startOfToday = DateTime.now().copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0);
-
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: Colors.blueGrey[50],
-        borderRadius: BorderRadius.circular(8.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey[300]!,
-            blurRadius: 4.0,
-            spreadRadius: 2.0,
-          ),
-        ],
-      ),
-      // --- FIX: The CalendarCard itself is now a SingleChildScrollView ---
-      // This ensures that the content inside CalendarCard can scroll if it exceeds available height.
-      // This is the most common and robust pattern for complex cards within a flexible layout.
-      child: SingleChildScrollView(
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          // mainAxisSize: MainAxisSize.min is often implicit in SingleChildScrollView's child,
-          // but explicit can help clarify intention.
-          mainAxisSize: MainAxisSize.min, // Added for clarity and robustness within SingleChildScrollView
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Calendar & Memos',
+              'Memos',
               style: TextStyle(
                 fontSize: 24.0,
                 fontWeight: FontWeight.bold,
@@ -420,95 +755,20 @@ class _CalendarCardState extends State<CalendarCard> {
               ),
             ),
             const SizedBox(height: 16.0),
-            TableCalendar(
-              firstDay: DateTime.utc(2010, 10, 16),
-              lastDay: DateTime.utc(2030, 3, 14),
-              focusedDay: _focusedDay,
-              calendarFormat: _calendarFormat,
-              selectedDayPredicate: (day) {
-                return isSameDay(_selectedDay, day);
-              },
-              onDaySelected: (selectedDay, focusedDay) {
-                setState(() {
-                  _selectedDay = selectedDay;
-                  _focusedDay = focusedDay;
-                });
-                _showMemoManagementDialogForDate(context, selectedDay);
-              },
-              onFormatChanged: (format) {
-                setState(() {
-                  _calendarFormat = format;
-                });
-              },
-              onPageChanged: (focusedDay) {
-                _focusedDay = focusedDay;
-                _loadDatesWithMemos();
-              },
-              calendarBuilders: CalendarBuilders(
-                markerBuilder: (context, date, events) {
-                  if (_datesWithMemos.any((savedDate) => isSameDay(savedDate, date))) {
-                    return Positioned(
-                      bottom: 1.0,
-                      child: Container(
-                        width: 5.0,
-                        height: 5.0,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.red,
-                        ),
-                      ),
-                    );
-                  }
-                  return null;
-                },
-              ),
-              calendarStyle: CalendarStyle(
-                outsideDaysVisible: false,
-                todayDecoration: BoxDecoration(
-                  color: Colors.blue[100],
-                  shape: BoxShape.circle,
-                ),
-                selectedDecoration: BoxDecoration(
-                  color: Colors.blue[300],
-                  shape: BoxShape.circle,
-                ),
-                defaultTextStyle: TextStyle(color: Colors.grey[800]),
-                weekendTextStyle: TextStyle(color: Colors.red[700]),
-              ),
-              headerStyle: HeaderStyle(
-                titleCentered: true,
-                titleTextStyle: TextStyle(
-                  fontSize: 20.0,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
-                formatButtonVisible: false,
-                leftChevronIcon: Icon(Icons.chevron_left, color: Colors.grey[600]),
-                rightChevronIcon: Icon(Icons.chevron_right, color: Colors.grey[600]),
-              ),
-              daysOfWeekStyle: DaysOfWeekStyle(
-                weekdayStyle: TextStyle(color: Colors.grey[800]),
-                weekendStyle: TextStyle(color: Colors.red[700]),
-              ),
-            ),
-            const SizedBox(height: 24.0),
             Text(
               'View all memos (Present & Future)',
               style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold, color: Colors.grey[800]),
             ),
             const SizedBox(height: 8.0),
-            // --- FIX: Removed Expanded. ListView.builder must now manage its own scrolling properties. ---
-            // It will also correctly shrink-wrap due to its parent Column having mainAxisSize.min
-            // and the outer SingleChildScrollView.
             user == null
                 ? const Text('Please log in to view memos.', style: TextStyle(color: Colors.grey))
                 : StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
                         .collectionGroup('memos')
                         .where('userId', isEqualTo: user.uid)
-                        .where('memoAssociatedDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfToday)) // Filter by memoAssociatedDate
-                        .orderBy('memoAssociatedDate', descending: false) // Primary sort by associated date
-                        .orderBy('timestamp', descending: false) // Secondary sort by creation/update time
+                        .where('memoAssociatedDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfToday))
+                        .orderBy('memoAssociatedDate', descending: false)
+                        .orderBy('timestamp', descending: false)
                         .snapshots(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
@@ -516,16 +776,15 @@ class _CalendarCardState extends State<CalendarCard> {
                       }
                       if (snapshot.hasError) {
                         print('Firestore Query Error: ${snapshot.error}');
-                        return Center(child: Text('Error loading memos. Check console for details.'));
+                        return const Center(child: Text('Error loading memos. Check console for details.'));
                       }
                       if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                         return const Center(child: Text('No present or future memos found.'));
                       }
-
                       final memos = snapshot.data!.docs;
                       return ListView.builder(
-                        shrinkWrap: true, // Crucial for ListView within a Column (that is in a SingleChildScrollView)
-                        physics: const NeverScrollableScrollPhysics(), // Prevent independent scrolling for this nested list
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
                         itemCount: memos.length,
                         itemBuilder: (context, index) {
                           final memoDoc = memos[index];
@@ -533,26 +792,23 @@ class _CalendarCardState extends State<CalendarCard> {
                           final memoData = memoDoc.data() as Map<String, dynamic>;
                           final memoText = memoData['text'] ?? 'No text';
                           final memoAssociatedDateTimestamp = memoData['memoAssociatedDate'] as Timestamp?;
-
                           DateTime? memoDisplayDate;
                           if (memoAssociatedDateTimestamp != null) {
                             memoDisplayDate = memoAssociatedDateTimestamp.toDate();
                           } else {
                             final List<String> pathSegments = memoDoc.reference.path.split('/');
                             if (pathSegments.length >= 4) {
-                               try {
-                                 memoDisplayDate = DateTime.parse(pathSegments[3]);
-                               } catch (e) {
-                                 print('Error parsing date from path segment (fallback): $e');
-                                 memoDisplayDate = DateTime.now();
-                               }
+                              try {
+                                memoDisplayDate = DateTime.parse(pathSegments[3]);
+                              } catch (e) {
+                                print('Error parsing date from path segment (fallback): $e');
+                                memoDisplayDate = DateTime.now();
+                              }
                             } else {
                               print('Path segments not as expected (fallback): ${memoDoc.reference.path}');
                               memoDisplayDate = DateTime.now();
                             }
                           }
-
-
                           return Card(
                             margin: const EdgeInsets.symmetric(vertical: 4.0),
                             child: InkWell(
@@ -577,7 +833,7 @@ class _CalendarCardState extends State<CalendarCard> {
                                       alignment: Alignment.topLeft,
                                       child: Text(
                                         memoDisplayDate != null ? DateFormat('dd/MM/yyyy :').format(memoDisplayDate) : 'Unknown Date',
-                                        style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold),
+                                        style: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold),
                                       ),
                                     ),
                                     Align(
@@ -603,21 +859,231 @@ class _CalendarCardState extends State<CalendarCard> {
   }
 }
 
+// New CalendarCard widget
+class CalendarCard extends StatefulWidget {
+  const CalendarCard({super.key});
+
+  @override
+  State<CalendarCard> createState() => _CalendarCardState();
+}
+
+class _CalendarCardState extends State<CalendarCard> {
+  CalendarFormat _calendarFormat = CalendarFormat.month;
+  DateTime _focusedDay = DateTime.now();
+  DateTime? _selectedDay;
+  final Set<DateTime> _datesWithMemos = {}; // Stores dates with memos
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  String? _userId;
+
+  @override
+  void initState() {
+    super.initState();
+    _auth.authStateChanges().listen((User? user) {
+      if (user != null) {
+        setState(() {
+          _userId = user.uid;
+        });
+        _loadDatesWithMemos(); // Load memos when user logs in
+      } else {
+        setState(() {
+          _userId = null;
+          _datesWithMemos.clear(); // Clear memos if user logs out
+        });
+      }
+    });
+    _selectedDay = _focusedDay;
+  }
+
+  // Function to load dates with memos from Firebase
+  Future<void> _loadDatesWithMemos() async {
+    if (_userId == null) return;
+    try {
+      // Get all date documents in the 'calendar' collection
+      final calendarSnapshot = await _firestore.collection('users').doc(_userId).collection('calendar').get();
+      setState(() {
+        _datesWithMemos.clear();
+        for (var dateDoc in calendarSnapshot.docs) {
+          final formattedDate = dateDoc.id; // e.g., '2025-07-24'
+          // Check if the 'memos' subcollection under this date document has any documents
+          _firestore.collection('users').doc(_userId).collection('calendar').doc(formattedDate).collection('memos').limit(1).get().then((memoSnapshot) {
+            if (memoSnapshot.docs.isNotEmpty) {
+              try {
+                final date = DateTime.parse(formattedDate);
+                // Ensure we only add the date once even if multiple memos exist
+                if (!_datesWithMemos.contains(date)) {
+                  setState(() {
+                    _datesWithMemos.add(date);
+                  });
+                }
+              } catch (e) {
+                print('Error parsing date from doc ID $formattedDate: $e');
+              }
+            }
+          });
+        }
+      });
+    } catch (e) {
+      print('Error loading dates with memos: $e');
+    }
+  }
+
+  // Function to show memo content in a dialog
+  Future<void> _showMemoDialog(BuildContext context, DateTime date) async {
+    if (_userId == null) return;
+
+    // Format the date to match your Firestore document ID format (e.g., '2023-10-27')
+    final formattedDate = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    try {
+      // Access the 'memos' subcollection under the specific date document
+      final memosSnapshot = await _firestore.collection('users').doc(_userId).collection('calendar').doc(formattedDate).collection('memos').limit(1).get();
+
+      String memoContent = 'No memo for this date.';
+      if (memosSnapshot.docs.isNotEmpty) {
+        // Get the data from the first memo document found
+        final memoData = memosSnapshot.docs.first.data();
+        // Retrieve the 'text' field, as per your specified structure
+        memoContent = (memoData['text'] as String?) ?? 'No memo content found.';
+      }
+
+      if (!context.mounted) return; // Check if the widget is still mounted before showing dialog
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text('Memo for $formattedDate'),
+            content: SingleChildScrollView(
+              child: Text(memoContent),
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('Close'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      print('Error fetching memo: $e');
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Error'),
+            content: Text('Failed to load memo: $e'),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('Close'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          );
+        },
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Calendar',
+              style: TextStyle(
+                fontSize: 24.0,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[800],
+              ),
+            ),
+            const SizedBox(height: 16.0),
+            TableCalendar(
+              firstDay: DateTime.utc(2020, 1, 1),
+              lastDay: DateTime.utc(2030, 12, 31),
+              focusedDay: _focusedDay,
+              calendarFormat: _calendarFormat,
+              selectedDayPredicate: (day) {
+                return isSameDay(_selectedDay, day);
+              },
+              onDaySelected: (selectedDay, focusedDay) {
+                setState(() {
+                  _selectedDay = selectedDay;
+                  _focusedDay = focusedDay;
+                });
+                _showMemoDialog(context, selectedDay);
+              },
+              onFormatChanged: (format) {
+                if (_calendarFormat != format) {
+                  setState(() {
+                    _calendarFormat = format;
+                  });
+                }
+              },
+              onPageChanged: (focusedDay) {
+                _focusedDay = focusedDay;
+              },
+              eventLoader: (day) {
+                return _datesWithMemos.any((date) => isSameDay(date, day)) ? ['memo'] : [];
+              },
+              calendarStyle: CalendarStyle(
+                selectedDecoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor,
+                  shape: BoxShape.circle,
+                ),
+                todayDecoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor.withOpacity(0.5),
+                  shape: BoxShape.circle,
+                ),
+                markerDecoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                markerSize: 5.0,
+              ),
+              headerStyle: HeaderStyle(
+                formatButtonVisible: true,
+                titleCentered: true,
+                formatButtonShowsNext: false,
+                formatButtonDecoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor,
+                  borderRadius: BorderRadius.circular(20.0),
+                ),
+                formatButtonTextStyle: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// New MemoDialog widget
 class _MemoDialog extends StatefulWidget {
   final DateTime selectedDate;
   final String userId;
-  final VoidCallback onMemoUpdated;
-  final Function(String message) onShowSnackBar;
   final String? initialMemoId;
   final String? initialMemoText;
+  final VoidCallback onMemoUpdated;
+  final Function(String) onShowSnackBar;
 
   const _MemoDialog({
+    super.key,
     required this.selectedDate,
     required this.userId,
-    required this.onMemoUpdated,
-    required this.onShowSnackBar,
     this.initialMemoId,
     this.initialMemoText,
+    required this.onMemoUpdated,
+    required this.onShowSnackBar,
   });
 
   @override
@@ -625,225 +1091,159 @@ class _MemoDialog extends StatefulWidget {
 }
 
 class _MemoDialogState extends State<_MemoDialog> {
-  final TextEditingController _memoInputController = TextEditingController();
-  String? _currentEditingMemoId;
+  final _memoController = TextEditingController();
+  bool _isEditing = false;
+  String _dialogTitle = '';
+  bool _isSaving = false;
+  bool _isLoading = true;
+  String _memoId = '';
 
   @override
   void initState() {
     super.initState();
-    if (widget.initialMemoText != null) {
-      _memoInputController.text = widget.initialMemoText!;
-      _currentEditingMemoId = widget.initialMemoId;
+    _dialogTitle = 'Add Memo';
+    if (widget.initialMemoId != null && widget.initialMemoText != null) {
+      _memoController.text = widget.initialMemoText!;
+      _memoId = widget.initialMemoId!;
+      _isEditing = true;
+      _dialogTitle = 'Edit Memo';
     }
+    _isLoading = false;
   }
 
   @override
   void dispose() {
-    _memoInputController.dispose();
+    _memoController.dispose();
     super.dispose();
   }
 
-  void _triggerSnackBar(String message) {
-    widget.onShowSnackBar(message); // This calls the parent's (CalendarCard's) snackbar function
-  }
-
-  Future<void> _addMemo() async {
-    if (_memoInputController.text.trim().isEmpty) {
-      _triggerSnackBar('Memo cannot be empty.');
+  Future<void> _saveMemo() async {
+    if (_memoController.text.trim().isEmpty) {
+      widget.onShowSnackBar('Memo text cannot be empty.');
       return;
     }
 
-    try {
-      final dateDocRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.userId)
-          .collection('calendar')
-          .doc(widget.selectedDate.toString().split(' ')[0]);
+    setState(() {
+      _isSaving = true;
+    });
 
-      await dateDocRef.set({}, SetOptions(merge: true));
-
-      await dateDocRef.collection('memos').add({
-        'text': _memoInputController.text.trim(),
-        'timestamp': FieldValue.serverTimestamp(),
-        'userId': widget.userId,
-        'memoAssociatedDate': Timestamp.fromDate(widget.selectedDate),
-      });
-      _memoInputController.clear();
-      _triggerSnackBar('Memo added!');
-      widget.onMemoUpdated();
-      if (!mounted) return;
-      Navigator.of(context).pop();
-    } catch (e) {
-      _triggerSnackBar('Failed to add memo: $e');
-    }
-  }
-
-  Future<void> _updateMemo() async {
-    if (_currentEditingMemoId == null) return;
-    if (_memoInputController.text.trim().isEmpty) {
-      _triggerSnackBar('Memo cannot be empty.');
-      return;
-    }
+    final formattedDate = '${widget.selectedDate.year}-${widget.selectedDate.month.toString().padLeft(2, '0')}-${widget.selectedDate.day.toString().padLeft(2, '0')}';
+    final userCalendarCollection = FirebaseFirestore.instance.collection('users').doc(widget.userId).collection('calendar');
 
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.userId)
-          .collection('calendar')
-          .doc(widget.selectedDate.toString().split(' ')[0])
-          .collection('memos')
-          .doc(_currentEditingMemoId)
-          .update({
-        'text': _memoInputController.text.trim(),
-        'timestamp': FieldValue.serverTimestamp(),
-        'memoAssociatedDate': Timestamp.fromDate(widget.selectedDate),
-      });
-      _memoInputController.clear();
-      setState(() {
-        _currentEditingMemoId = null;
-      });
-      _triggerSnackBar('Memo updated!');
+      if (_isEditing) {
+        // Update existing memo
+        final memoRef = userCalendarCollection.doc(formattedDate).collection('memos').doc(_memoId);
+        await memoRef.update({
+          'text': _memoController.text,
+          'timestamp': FieldValue.serverTimestamp(),
+          'memoAssociatedDate': Timestamp.fromDate(widget.selectedDate.copyWith(hour: 0, minute: 0, second: 0, millisecond: 0)), // Store date at midnight UTC
+        });
+        widget.onShowSnackBar('Memo updated successfully!');
+      } else {
+        // Add new memo
+        final memoRef = userCalendarCollection.doc(formattedDate).collection('memos').doc();
+        await memoRef.set({
+          'text': _memoController.text,
+          'timestamp': FieldValue.serverTimestamp(),
+          'memoAssociatedDate': Timestamp.fromDate(widget.selectedDate.copyWith(hour: 0, minute: 0, second: 0, millisecond: 0)),
+          'userId': widget.userId,
+        });
+        widget.onShowSnackBar('Memo added successfully!');
+      }
       widget.onMemoUpdated();
-      if (!mounted) return;
-      Navigator.of(context).pop();
+      if (context.mounted) Navigator.of(context).pop();
     } catch (e) {
-      _triggerSnackBar('Failed to update memo: $e');
+      print('Error saving memo: $e');
+      widget.onShowSnackBar('Failed to save memo: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
   }
 
   Future<void> _deleteMemo() async {
-    if (_currentEditingMemoId == null) return;
+    if (!_isEditing) return; // Can only delete an existing memo
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    final formattedDate = '${widget.selectedDate.year}-${widget.selectedDate.month.toString().padLeft(2, '0')}-${widget.selectedDate.day.toString().padLeft(2, '0')}';
+    final userCalendarCollection = FirebaseFirestore.instance.collection('users').doc(widget.userId).collection('calendar');
 
     try {
-      final dateDocRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.userId)
-          .collection('calendar')
-          .doc(widget.selectedDate.toString().split(' ')[0]);
+      final memoRef = userCalendarCollection.doc(formattedDate).collection('memos').doc(_memoId);
+      await memoRef.delete();
+      widget.onShowSnackBar('Memo deleted successfully!');
 
-      await dateDocRef.collection('memos').doc(_currentEditingMemoId).delete();
-
-      final remainingMemos = await dateDocRef.collection('memos').get();
-      if (remainingMemos.docs.isEmpty) {
-        await dateDocRef.delete();
+      // Check if the date document is empty and delete it if so
+      final memosSnapshot = await userCalendarCollection.doc(formattedDate).collection('memos').get();
+      if (memosSnapshot.docs.isEmpty) {
+        await userCalendarCollection.doc(formattedDate).delete();
       }
 
-      _triggerSnackBar('Memo deleted!');
       widget.onMemoUpdated();
-      if (!mounted) return;
-      Navigator.of(context).pop();
+      if (context.mounted) Navigator.of(context).pop();
     } catch (e) {
-      _triggerSnackBar('Failed to delete memo: $e');
+      print('Error deleting memo: $e');
+      widget.onShowSnackBar('Failed to delete memo: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const AlertDialog(
+        content: Center(child: CircularProgressIndicator()),
+      );
+    }
     return AlertDialog(
-      title: Text(
-          _currentEditingMemoId == null
-              ? 'Add Memo for ${DateFormat('dd/MM/yyyy').format(widget.selectedDate)}'
-              : 'Edit Memo for ${DateFormat('dd/MM/yyyy').format(widget.selectedDate)}'),
-      content: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.4,
+      title: Text(_dialogTitle),
+      content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Text('Date: ${DateFormat('yyyy-MM-dd').format(widget.selectedDate)}'),
+            const SizedBox(height: 16),
             TextField(
-              controller: _memoInputController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: _currentEditingMemoId == null ? 'Enter new memo...' : 'Edit memo...',
-                border: const OutlineInputBorder(),
+              controller: _memoController,
+              decoration: const InputDecoration(
+                labelText: 'Memo',
+                border: OutlineInputBorder(),
               ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton(
-                  onPressed: _currentEditingMemoId == null ? _addMemo : _updateMemo,
-                  child: Text(_currentEditingMemoId == null ? 'Add Memo' : 'Update Memo'),
-                ),
-                if (_currentEditingMemoId != null)
-                  ElevatedButton(
-                    onPressed: _deleteMemo,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                    child: const Text('Delete Memo'),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Other Memos for this Date:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            Flexible(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(widget.userId)
-                    .collection('calendar')
-                    .doc(widget.selectedDate.toString().split(' ')[0])
-                    .collection('memos')
-                    .orderBy('timestamp', descending: true)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  }
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return const Center(child: Text('No other memos for this date.'));
-                  }
-
-                  final memos = snapshot.data!.docs;
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: memos.length,
-                    itemBuilder: (context, index) {
-                      final memoDoc = memos[index];
-                      final memoId = memoDoc.id;
-                      final memoData = memoDoc.data() as Map<String, dynamic>;
-                      final memoText = memoData['text'] ?? 'No text';
-                      final memoTimestamp = (memoData['timestamp'] as Timestamp?)?.toDate();
-
-                      if (memoId == _currentEditingMemoId && _currentEditingMemoId != null) {
-                         return const SizedBox.shrink();
-                      }
-
-                      return Card(
-                        margin: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: ListTile(
-                          title: Text(memoText),
-                          subtitle: memoTimestamp != null
-                              ? Text(DateFormat('HH:mm').format(memoTimestamp))
-                              : null,
-                          onTap: () {
-                             setState(() {
-                               _memoInputController.text = memoText;
-                               _currentEditingMemoId = memoId;
-                             });
-                          },
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
+              maxLines: 5,
             ),
           ],
         ),
       ),
       actions: <Widget>[
+        if (_isEditing)
+          TextButton(
+            onPressed: _isSaving ? null : _deleteMemo,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Delete'),
+          ),
         TextButton(
-          child: const Text('Close'),
+          child: const Text('Cancel'),
           onPressed: () {
             Navigator.of(context).pop();
           },
+        ),
+        TextButton(
+          onPressed: _isSaving ? null : _saveMemo,
+          child: _isSaving ? const CircularProgressIndicator() : Text(_isEditing ? 'Update' : 'Save'),
         ),
       ],
     );

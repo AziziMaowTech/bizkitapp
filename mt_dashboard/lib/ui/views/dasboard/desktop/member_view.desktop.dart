@@ -11,14 +11,12 @@ import 'package:mt_dashboard/ui/views/dasboard/desktop/settings_view.dart';
 import 'package:mt_dashboard/ui/views/dasboard/history_view.dart';
 import 'package:mt_dashboard/ui/views/home/home_view.dart';
 import 'package:mt_dashboard/ui/widgets/custom_app_bar.dart';
-// Unused imports from your original file:
-// import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-// import 'dart:io';
-// import 'package:image_picker/image_picker.dart';
-// import 'package:firebase_storage/firebase_storage.dart';
-// import 'package:flutter/foundation.dart' show kIsWeb;
-// import 'package:file_picker/file_picker.dart';
-// import 'package:flutter/services.dart';
+// Required imports for image picking, file picking, Firebase Storage, and platform detection
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 
 void main() {
   runApp(const MemberViewDesktop());
@@ -40,22 +38,22 @@ class MemberViewDesktop extends StatelessWidget {
           color: Colors.white,
           elevation: 0.5,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.0),
+            borderRadius: BorderRadius.circular(30.0),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: BorderSide.none, // No border
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: const BorderSide(color: Colors.blue, width: 1.0), // Blue border on focus
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -76,7 +74,148 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   // A simple state for sidebar expansion, not fully interactive for this example
-  bool _isSidebarExpanded = true;
+  bool _isSidebarExpanded = false;
+  final String? _userId = FirebaseAuth.instance.currentUser?.uid;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Add the missing controller and search query
+  final TextEditingController _customerSearchController = TextEditingController();
+  String _customerSearchQuery = '';
+
+  // Define the missing method to show member details dialog
+  void _showMemberDetailsDialog(BuildContext context, Map<String, dynamic> data) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30.0),
+          ),
+          title: Text(
+            data['name'] ?? 'Member Details',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (data['email'] != null) Text('Email: ${data['email']}'),
+                if (data['phone'] != null) Text('Phone: ${data['phone']}'),
+                if (data['address'] != null) Text('Address: ${data['address']}'),
+                if (data['city'] != null) Text('City: ${data['city']}'),
+                if (data['zip'] != null) Text('Zip: ${data['zip']}'),
+                if (data['state'] != null) Text('State: ${data['state']}'),
+                if (data['country'] != null) Text('Country: ${data['country']}'),
+                if (data['discount'] != null) Text('Discount: ${data['discount']}'),
+                if (data['createdAt'] != null && data['createdAt'] is Timestamp)
+                  Text('Joined: ${(data['createdAt'] as Timestamp).toDate()}'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Added method to show member edit dialog
+  void _showMemberEditDialog(BuildContext context, Map<String, dynamic> data, String docId) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        // You can customize this dialog as needed, here is a simple placeholder
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30.0),
+          ),
+          title: Text(
+            'Edit Member',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text('Member editing functionality is not implemented here.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Added method to show member delete dialog
+  void _showMemberDeleteDialog(BuildContext context, String docId, String memberName) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30.0),
+          ),
+          title: const Text('Delete Member'),
+          content: Text('Are you sure you want to delete "$memberName"? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  final user = FirebaseAuth.instance.currentUser;
+                  if (user != null) {
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(user.uid)
+                        .collection('members')
+                        .doc(docId)
+                        .delete();
+                  }
+                  if (context.mounted) {
+                    Navigator.of(dialogContext).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Member deleted successfully!'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    Navigator.of(dialogContext).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error deleting member: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[600],
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _customerSearchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,16 +223,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: Row(
         children: [
           // Sidebar
-          SizedBox(
-            width: _isSidebarExpanded ? 240 : 70, // Adjust width based on expansion state
-            child: const Sidebar(),
+          MouseRegion(
+            onEnter: (event) {
+              setState(() {
+                _isSidebarExpanded = true;
+              });
+            },
+            onExit: (event) {
+              setState(() {
+                _isSidebarExpanded = false;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: _isSidebarExpanded ? 240 : 70,
+              child: Sidebar(
+                isExpanded: _isSidebarExpanded,
+              ),
+            ),
           ),
           // Main Content Area
           Expanded(
             child: Column(
               children: [
-                // Top App Bar
-                const CustomAppBar(),
                 // Main Dashboard Content
                 Expanded(
                   child: SingleChildScrollView(
@@ -101,6 +254,421 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Charts Section
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                            Expanded(
+                              flex: 2, // Adjust flex to give more space to the left card
+                              child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start, // Align to the left
+                              children: [
+                                Text(
+                                'Customer Analytics',
+                                style: TextStyle(
+                                  fontSize: 60.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[800],
+                                ),
+                                ),
+                              ],
+                              ),
+                            ),
+                          const SizedBox(width: 24.0),
+                            Expanded(
+                            flex: 1, // Adjust flex for the right card
+                            child: Column(
+                              children: [
+                                Row(
+                                  // New Row for User Info Card and Buttons
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  children: [
+                                    const SizedBox(width: 16.0),
+                                    IconButton(
+                                      icon: Icon(Icons.notifications_none, color: Colors.grey[600]),
+                                      onPressed: () {},
+                                    ),
+                                    const SizedBox(width: 16.0),
+                                    IconButton(
+                                      icon: Icon(Icons.settings_outlined, color: Colors.grey[600]),
+                                      onPressed: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(builder: (context) => const SettingsView()),
+                                        );
+                                      },
+                                    ),
+                                    const SizedBox(width: 24.0),
+                                    Expanded(
+                                      child: _UserDropdownCard(
+                                        userId: _userId,
+                                        firestore: _firestore,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          ],
+                        ),
+                        const SizedBox(height: 24.0),
+                        Row(
+                          children: [
+                          // First Card
+                          Expanded(
+                            child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                'Total Customers',
+                                style: TextStyle(
+                                  fontSize: 24.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[800],
+                                ),
+                                ),
+                                const SizedBox(height: 16.0),
+                                Row(
+                                  children: [
+                                    Text(
+                                      '89',
+                                      style: TextStyle(
+                                      fontSize: 64.0,
+                                      color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 24.0),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green[100],
+                                        borderRadius: BorderRadius.circular(8.0),
+                                      ),
+                                      child: Text(
+                                        '2% increase',
+                                        style: TextStyle(
+                                          fontSize: 16.0,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                        ' since last month.',
+                                        style: TextStyle(
+                                        fontSize: 16.0,
+                                        color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                              ],
+                              ),
+                            ),
+                            ),
+                          ),
+                          const SizedBox(width: 32.0),
+                          // Second Card
+                          Expanded(
+                            child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                'Total Members',
+                                style: TextStyle(
+                                  fontSize: 24.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[800],
+                                ),
+                                ),
+                                const SizedBox(height: 16.0),
+                                Row(
+                                  children: [
+                                    Text(
+                                      '56',
+                                      style: TextStyle(
+                                      fontSize: 64.0,
+                                      color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 24.0),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+                                      decoration: BoxDecoration(
+                                        color: const Color.fromARGB(255, 230, 200, 200),
+                                        borderRadius: BorderRadius.circular(8.0),
+                                      ),
+                                      child: Text(
+                                        '0.9% decrease',
+                                        style: TextStyle(
+                                          fontSize: 16.0,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                        ' since last month.',
+                                        style: TextStyle(
+                                        fontSize: 16.0,
+                                        color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                              ],
+                              ),
+                            ),
+                            ),
+                          ),
+                          const SizedBox(width: 32.0),
+                          // Third Card
+                            Expanded(
+                            child: Card(
+                              child: Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                Text(
+                                  'Total Non-Members',
+                                  style: TextStyle(
+                                  fontSize: 24.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[800],
+                                  ),
+                                ),
+                                const SizedBox(height: 16.0),
+                                Row(
+                                  children: [
+                                    Text(
+                                      '33',
+                                      style: TextStyle(
+                                      fontSize: 64.0,
+                                      color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 24.0),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green[100],
+                                        borderRadius: BorderRadius.circular(8.0),
+                                      ),
+                                      child: Text(
+                                        '1% increase',
+                                        style: TextStyle(
+                                          fontSize: 16.0,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                        ' since last month.',
+                                        style: TextStyle(
+                                        fontSize: 16.0,
+                                        color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          ],
+                        ),
+                        const SizedBox(height: 24.0),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                          // First Card
+                          Expanded(
+                            child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                children: [
+                                  Text(
+                                  'Your Customers',
+                                  style: TextStyle(
+                                    fontSize: 24.0,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey[800],
+                                  ),
+                                  ),
+                                  const Spacer(),
+                                  SizedBox(
+                                  width: 250,
+                                  child: TextField(
+                                    controller: _customerSearchController,
+                                    decoration: InputDecoration(
+                                    hintText: 'Search customers...',
+                                    prefixIcon: Icon(Icons.search, color: Colors.grey[500]),
+                                    suffixIcon: _customerSearchQuery.isNotEmpty
+                                      ? IconButton(
+                                        icon: const Icon(Icons.clear, color: Colors.grey),
+                                        onPressed: () {
+                                          setState(() {
+                                          _customerSearchController.clear();
+                                          _customerSearchQuery = '';
+                                          });
+                                        },
+                                        )
+                                      : null,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0.0),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(30.0),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey[100],
+                                    ),
+                                    onChanged: (value) {
+                                    setState(() {
+                                      _customerSearchQuery = value;
+                                    });
+                                    },
+                                  ),
+                                  ),
+                                ],
+                                ),
+                                const SizedBox(height: 16.0),
+                                StreamBuilder<QuerySnapshot>(
+                                stream: FirebaseAuth.instance.authStateChanges().asyncExpand((user) {
+                                  if (user == null) {
+                                  return Stream.empty();
+                                  }
+                                  return FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(user.uid)
+                                    .collection('members')
+                                    .orderBy('createdAt', descending: true)
+                                    .snapshots();
+                                }),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const Center(child: CircularProgressIndicator());
+                                  }
+                                  if (snapshot.hasError) {
+                                  return Center(
+                                    child: Text(
+                                    'Error: ${snapshot.error}',
+                                    style: TextStyle(color: Colors.red[600]),
+                                    ),
+                                  );
+                                  }
+                                  List<QueryDocumentSnapshot> members = snapshot.data?.docs ?? [];
+                                  // Apply search filter
+                                  if (_customerSearchQuery.isNotEmpty) {
+                                  final query = _customerSearchQuery.toLowerCase();
+                                  members = members.where((doc) {
+                                    final data = doc.data() as Map<String, dynamic>;
+                                    final name = (data['name'] ?? '').toString().toLowerCase();
+                                    final id = (data['id'] ?? doc.id).toString().toLowerCase();
+                                    final phone = (data['phone'] ?? '').toString().toLowerCase();
+                                    return name.contains(query) || id.contains(query) || phone.contains(query);
+                                  }).toList();
+                                  }
+                                  if (members.isEmpty) {
+                                  return const Text(
+                                    'No members found.',
+                                    style: TextStyle(color: Colors.grey),
+                                  );
+                                  }
+                                  // Center the table horizontally
+                                  return Center(
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: DataTable(
+                                    columns: const [
+                                      DataColumn(label: Text('Name')),
+                                      DataColumn(label: Text('Customer ID')),
+                                      DataColumn(label: Text('Phone No.')),
+                                      DataColumn(label: Text('Membership')),
+                                      DataColumn(label: Text('Date Join')),
+                                      DataColumn(label: Text('Actions')),
+                                    ],
+                                    rows: members.map((doc) {
+                                      final data = doc.data() as Map<String, dynamic>;
+                                      final name = data['name'] ?? 'No Name';
+                                      final customerId = data['id'] ?? doc.id;
+                                      final phone = data['phone'] ?? '-';
+                                      final membership = (data['discount'] != null && data['discount'] != '0%' && data['discount'] != '0')
+                                        ? 'Member'
+                                        : 'Non-Member';
+                                      final timestamp = data['createdAt'];
+                                      String dateJoin = '-';
+                                      if (timestamp != null && timestamp is Timestamp) {
+                                      final dt = timestamp.toDate();
+                                      dateJoin = "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}";
+                                      }
+                                      return DataRow(
+                                      cells: [
+                                        DataCell(Text(name)),
+                                        DataCell(Text(customerId)),
+                                        DataCell(Text(phone)),
+                                        DataCell(Text(membership)),
+                                        DataCell(Text(dateJoin)),
+                                        DataCell(
+                                        Row(
+                                          children: [
+                                          Tooltip(
+                                            message: 'View Details',
+                                            child: IconButton(
+                                            icon: const Icon(Icons.info_outline, color: Colors.blue),
+                                            onPressed: () {
+                                              _showMemberDetailsDialog(context, data);
+                                            },
+                                            ),
+                                          ),
+                                          PopupMenuButton<String>(
+                                            icon: const Icon(Icons.more_vert),
+                                            onSelected: (value) {
+                                            if (value == 'edit') {
+                                              _showMemberEditDialog(context, data, doc.id);
+                                            } else if (value == 'delete') {
+                                              _showMemberDeleteDialog(context, doc.id, data['name'] ?? '');
+                                            }
+                                            },
+                                            itemBuilder: (context) => [
+                                            const PopupMenuItem(
+                                              value: 'edit',
+                                              child: Text('Edit'),
+                                            ),
+                                            const PopupMenuItem(
+                                              value: 'delete',
+                                              child: Text('Delete'),
+                                            ),
+                                            ],
+                                          ),
+                                          ],
+                                        ),
+                                        ),
+                                      ],
+                                      );
+                                    }).toList(),
+                                    ),
+                                  ),
+                                  );
+                                },
+                                )
+                              ],
+                              ),
+                            ),
+                            ),
+                          ),
+                          ],
+                        ),
+                        const SizedBox(height: 24.0),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -138,98 +706,246 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// --- Sidebar Widget ---
+// --- Sidebar Widget (from dashboard_view.desktop.dart) ---
 class Sidebar extends StatelessWidget {
-  const Sidebar({super.key});
+  final bool isExpanded;
+
+  const Sidebar({
+    super.key,
+    required this.isExpanded,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // List of navigation items
+    final navItems = [
+      _SidebarNavItem(
+        icon: Icons.home,
+        label: 'Dashboard',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const DashboardView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.point_of_sale,
+        label: 'POS',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const PosView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.inventory,
+        label: 'Inventory',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const CatalougeView()),
+          );
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.local_shipping,
+      //   label: 'Orders',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const OrdersView()),
+      //     );
+      //   },
+      // ),
+      _SidebarNavItem(
+        icon: Icons.calendar_month,
+        label: 'Calendar',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const CalendarView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.group,
+        label: 'Customers',
+        isSelected: true, // This is the selected item
+        isExpanded: isExpanded,
+        onTap: () {
+          // Already on this page
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.history,
+      //   label: 'History',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const HistoryView()),
+      //     );
+      //   },
+      // ),
+    ];
+
     return Container(
-      width: 240, // Fixed width for the sidebar
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      width: isExpanded ? 240 : 70,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF8B5CF6),
+            Color(0xFF6F01FD),
+          ],
+        ),
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(24.0),
+          bottomRight: Radius.circular(24.0),
+        ),
+      ),
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
+          const SizedBox(height: 96.0),
           // Branding
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Center(
-              child: Image.asset(
-                'assets/images/placeholder.png',
-                height: 100,
-                width: 100,
-              ),
+              child: isExpanded
+                  ? Image.asset(
+                      'assets/images/placeholder.png',
+                      height: 100,
+                      width: 100,
+                    )
+                  : Image.asset(
+                      'assets/images/placeholder_small.png',
+                      height: 50,
+                      width: 50,
+                    ),
             ),
-          ),
-          const SizedBox(height: 32.0),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.point_of_sale),
-            label: const Text('POS'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              textStyle: const TextStyle(fontWeight: FontWeight.bold),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (context) => PosView()));
-            },
           ),
           const SizedBox(height: 24.0),
-          _SidebarNavItem(icon: Icons.dashboard, label: 'Overview', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => DashboardView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.inventory, label: 'Catalogues', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => CatalougeView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.local_shipping, label: 'Orders', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => OrdersView()
+          // Center navigation items vertically
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: navItems,
               ),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.calendar_month, label: 'Calendar', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const CalendarView()
-              ),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.group, label: 'Members', isSelected: true, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => MemberView()),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.history, label: 'History', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const HistoryView()
-              ),
-            );
-          }),
-          const Spacer(),
-          _SidebarNavItem(
-            icon: Icons.settings,
-            label: 'Settings',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const SettingsView()),
-              );
-            },
+            ),
           ),
-          _SidebarNavItem(icon: Icons.logout_outlined, label: 'Logout', onTap: () async {
-            await FirebaseAuth.instance.signOut();
-            if (context.mounted) {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (context) => const HomeView()),
-              );
-            }
-          },)
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(24.0),
+                child: InkWell(
+                  onTap: () async {},
+                  borderRadius: BorderRadius.circular(24.0),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24.0),
+                    ),
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(width: 12.0),
+                          Text(
+                            'Basic Plan',
+                            style: TextStyle(
+                              fontSize: 16.0,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF6F01FD),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 16.0 : 0.0, vertical: 8.0),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(24.0),
+              child: InkWell(
+                onTap: () async {
+                  final user = FirebaseAuth.instance.currentUser;
+                  final userId = user?.uid;
+
+                  if (userId != null) {
+                    try {
+                      await FirebaseFirestore.instance.collection('users').doc(userId).collection('activity').add({
+                        'type': 'Logout',
+                        'message': 'User logged out',
+                        'timestamp': FieldValue.serverTimestamp(),
+                      });
+                      print('DEBUG: Logout event logged to "activity" collection for user $userId');
+                    } catch (e) {
+                      print('ERROR: Failed to log logout event for user $userId: $e');
+                    }
+                  }
+
+                  await FirebaseAuth.instance.signOut();
+                  if (!context.mounted) return;
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HomeView()),
+                  );
+                },
+                borderRadius: BorderRadius.circular(24.0),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFB8C63),
+                        Color(0xFFF74403),
+                        Color(0xFFFB8C63),
+                      ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24.0),
+                  ),
+                  child: Container(
+                    height: 48,
+                    alignment: isExpanded ? Alignment.center : Alignment.center,
+                    padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0),
+                    child: isExpanded
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.logout_outlined, color: Colors.white),
+                              SizedBox(width: 12.0),
+                              Text(
+                                'Logout',
+                                style: TextStyle(
+                                  fontSize: 16.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Icon(Icons.logout_outlined, color: Colors.white, size: 24),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -241,6 +957,7 @@ class _SidebarNavItem extends StatelessWidget {
   final String label;
   final bool isSelected;
   final bool isPrimary;
+  final bool isExpanded;
   final VoidCallback onTap;
 
   const _SidebarNavItem({
@@ -249,57 +966,54 @@ class _SidebarNavItem extends StatelessWidget {
     this.isSelected = false,
     this.isPrimary = false,
     required this.onTap,
+    required this.isExpanded,
   });
 
   @override
   Widget build(BuildContext context) {
-    Color itemBackgroundColor = isSelected ? const Color(0xFFDBEAFE) : Colors.transparent;
-    Color itemIconColor = isPrimary
-        ? Colors.white
-        : isSelected
-        ? const Color(0xFF3B82F6)
-        : Colors.grey[600]!;
+    const Color contentBackgroundColor = Color(0xFFF1F5F9);
 
-    Color itemTextColor = isPrimary
-        ? Colors.white
-        : isSelected
-        ? const Color(0xFF3B82F6)
-        : Colors.grey[800]!;
+    Color itemIconColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
 
+    Color itemTextColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
 
-    return Material(
-      color: itemBackgroundColor,
-      borderRadius: const BorderRadius.horizontal(right: Radius.circular(12.0)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: const BorderRadius.horizontal(right: Radius.circular(12.0)),
-        child: Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          alignment: Alignment.centerLeft,
-          decoration: isSelected
-              ? const BoxDecoration(
-            border: Border(left: BorderSide(color: Color(0xFF3B82F6), width: 3.0)),
-          )
-              : null,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: itemIconColor,
-              ),
-              const SizedBox(width: 12.0),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 16.0,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: itemTextColor,
-                ),
-              ),
-              if (isPrimary) const Spacer(),
-            ],
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Material(
+        color: isSelected ? contentBackgroundColor : Colors.transparent,
+        borderRadius: isSelected
+            ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+            : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: isSelected
+              ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+              : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+          child: Container(
+            height: 48,
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0.0),
+            alignment: isExpanded ? Alignment.centerLeft : Alignment.center,
+            child: isExpanded
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        color: itemIconColor,
+                      ),
+                      const SizedBox(width: 12.0),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16.0,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: itemTextColor,
+                        ),
+                      ),
+                    ],
+                  )
+                : Icon(icon, color: itemIconColor, size: 24),
           ),
         ),
       ),
@@ -346,7 +1060,7 @@ class _MemberCardState extends State<MemberCard> {
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8.0),
+        borderRadius: BorderRadius.circular(30.0),
         boxShadow: [
           BoxShadow(
             color: Colors.grey[300]!,
@@ -585,7 +1299,7 @@ class _MemberCardState extends State<MemberCard> {
       builder: (BuildContext dialogContext) { // Use dialogContext for Navigator.of(dialogContext).pop()
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.0),
+            borderRadius: BorderRadius.circular(30.0),
           ),
           child: Container(
             width: MediaQuery.of(dialogContext).size.width * 0.5,
@@ -1018,7 +1732,7 @@ class _AddMemberCardState extends State<AddMemberCard> {
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8.0),
+        borderRadius: BorderRadius.circular(30.0),
         boxShadow: [
           BoxShadow(
             color: Colors.grey[300]!,
@@ -1234,7 +1948,7 @@ class _AddMemberCardState extends State<AddMemberCard> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(30.0),
                   ),
                 ),
                 child: const Text(
@@ -1434,7 +2148,7 @@ class _MemberDiscountCardState extends State<MemberDiscountCard> {
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8.0),
+        borderRadius: BorderRadius.circular(30.0),
         boxShadow: [
           BoxShadow(
             color: Colors.grey[300]!,
@@ -1513,7 +2227,7 @@ class _MemberDiscountCardState extends State<MemberDiscountCard> {
                   decoration: BoxDecoration(
                     color: Colors.grey[50],
                     border: Border.all(color: Colors.grey[300]!),
-                    borderRadius: BorderRadius.circular(6.0),
+                    borderRadius: BorderRadius.circular(30.0),
                   ),
                   child: Row(
                     children: [
@@ -1621,7 +2335,7 @@ class _MemberDiscountCardState extends State<MemberDiscountCard> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(30.0),
                   ),
                 ),
               ),
@@ -1639,7 +2353,7 @@ class _MemberDiscountCardState extends State<MemberDiscountCard> {
       decoration: BoxDecoration(
         color: Colors.green[50],
         border: Border.all(color: Colors.green[200]!),
-        borderRadius: BorderRadius.circular(6.0),
+        borderRadius: BorderRadius.circular(30.0),
       ),
       child: Row(
         children: [
@@ -1668,5 +2382,176 @@ class _MemberDiscountCardState extends State<MemberDiscountCard> {
         ],
       ),
     );
+  }
+}
+
+// --- User Dropdown Card Widget ---
+class _UserDropdownCard extends StatelessWidget {
+  final String? userId;
+  final FirebaseFirestore firestore;
+
+  const _UserDropdownCard({
+    Key? key,
+    required this.userId,
+    required this.firestore,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    if (userId == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text('No user info available.'),
+        ),
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: firestore.collection('users').doc(userId).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+        if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text('Error loading user info.'),
+            ),
+          );
+        }
+
+        final userData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
+        final displayName = userData['name'] as String? ?? 'User';
+        final email = userData['email'] as String? ?? 'No email';
+        // Updated to use 'profilePictureUrl' for the profile image
+        final profilePictureUrl = userData['profilePictureUrl'] as String?;
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                // Wrap CircleAvatar with GestureDetector for tap functionality
+                GestureDetector(
+                  onTap: () async {
+                    if (userId != null) {
+                      await _changeProfilePicture(context, userId!, firestore);
+                    }
+                  },
+                  child: CircleAvatar(
+                    radius: 24,
+                    backgroundImage: profilePictureUrl != null ? NetworkImage(profilePictureUrl) : null,
+                    child: profilePictureUrl == null ? const Icon(Icons.person, size: 32) : null,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        displayName,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        email,
+                        style: const TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.arrow_drop_down),
+                  onSelected: (value) {
+                    if (value == 'Logout') {
+                      FirebaseAuth.instance.signOut();
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (context) => const HomeView()),
+                      );
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'Logout',
+                      child: Text('Logout'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Function to handle changing profile picture
+  Future<void> _changeProfilePicture(BuildContext context, String userId, FirebaseFirestore firestore) async {
+    final ImagePicker picker = ImagePicker();
+    XFile? image;
+
+    if (kIsWeb) {
+      // Web specific file picking
+      final result = await FilePicker.platform.pickFiles(type: FileType.image);
+      if (result != null && result.files.single.bytes != null) {
+        final fileName = result.files.single.name;
+        final fileBytes = result.files.single.bytes!;
+        image = XFile.fromData(fileBytes, name: fileName);
+      }
+    } else {
+      // Mobile specific image picking
+      image = await picker.pickImage(source: ImageSource.gallery);
+    }
+
+    if (image != null) {
+      try {
+        // Upload image to Firebase Storage
+        final storageRef = FirebaseStorage.instance.ref().child('profile_pictures').child('$userId/${image.name}');
+        UploadTask uploadTask;
+
+        if (kIsWeb) {
+          uploadTask = storageRef.putData(await image.readAsBytes());
+        } else {
+          uploadTask = storageRef.putFile(File(image.path));
+        }
+
+        final snapshot = await uploadTask;
+        final downloadUrl = await snapshot.ref.getDownloadURL();
+
+        // Update profilePictureUrl in Firestore
+        await firestore.collection('users').doc(userId).update({
+          'profilePictureUrl': downloadUrl,
+        });
+
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile picture updated successfully!')),
+        );
+      } on FirebaseException catch (e) {
+        print('Error uploading profile picture: ${e.message}');
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update profile picture: ${e.message}')),
+        );
+      } catch (e) {
+        print('Unexpected error: $e');
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('An unexpected error occurred: $e')),
+        );
+      }
+    } else {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No image selected.')),
+      );
+    }
   }
 }

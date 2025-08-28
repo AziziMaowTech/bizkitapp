@@ -1,15 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; // Corrected import
 import 'dart:async';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:mt_dashboard/authentication/auth_services.dart';
-import 'package:mt_dashboard/authentication/signup_view.dart';
-import 'package:mt_dashboard/ui/views/dasboard/dashboard_view.dart';
-import 'package:mt_dashboard/ui/widgets/auth_carousel.dart';
-import 'package:google_sign_in/google_sign_in.dart'; // Import Google Sign-In package
+import 'package:flutter/services.dart'; // Corrected import
+// import 'package:flutter_svg/flutter_svg.dart'; // Not used in the new design, can be removed if not needed elsewhere
+import 'package:mt_dashboard/authentication/auth_services.dart'; // Corrected import
+import 'package:mt_dashboard/authentication/signup_view.dart'; // Corrected import
+// import 'package:mt_dashboard/ui/views/dasboard/dashboard_view.dart'; // Not directly used in login, but might be for navigation after login
+// import 'package:mt_dashboard/ui/widgets/auth_carousel.dart'; // This widget is removed in the new design
+
+// Import Google Sign-In package - already present
+import 'package:google_sign_in/google_sign_in.dart';
+
 
 class LoginViewDesktop extends StatefulWidget {
   const LoginViewDesktop({super.key});
@@ -21,6 +24,7 @@ class LoginViewDesktop extends StatefulWidget {
 class _LoginViewDesktopState extends State<LoginViewDesktop> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  bool _obscureText = true; // Added for password visibility toggle
 
   @override
   void dispose() {
@@ -159,216 +163,376 @@ class _LoginViewDesktopState extends State<LoginViewDesktop> {
     }
   }
 
+  // Placeholder for Apple Sign-In (if mt_dashboard/authentication/auth_services.dart supports it)
+  // This function is no longer used for the 'Continue with phone' button but is kept for reference.
+  Future<void> _handleAppleSignIn() async {
+    // You would typically call authService.value.signInWithApple() here
+    _handleSignInWithPhone(); // Re-using phone sign-in as a placeholder for Apple, adapt as needed
+  }
+
+
   @override
   Widget build(BuildContext context) {
-    final bool isLargeScreen = MediaQuery.of(context).size.width > 768;
+    // We are implementing a desktop-first design based on the image,
+    // so `isLargeScreen` logic from the original file is less critical for this specific design but kept for reference.
+    // The design itself looks like a fixed large desktop view.
+    // final bool isLargeScreen = MediaQuery.of(context).size.width > 768; // Removed as it simplifies the layout to always be desktop-like
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6),
-      body: Center(
-        child: Card(
-          color: Colors.white,
-          margin: EdgeInsets.all(isLargeScreen ? 32.0 : 16.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 960),
-            child: Flex(
-              direction: isLargeScreen ? Axis.horizontal : Axis.vertical,
-              children: [
-                Expanded(
-                  flex: isLargeScreen ? 1 : 0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(16.0),
-                        bottomLeft: isLargeScreen ? const Radius.circular(16.0) : Radius.zero,
-                        topRight: isLargeScreen ? Radius.zero : const Radius.circular(16.0),
-                      ),
-                    ),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(48.0),
+      // Remove backgroundColor from Scaffold and apply gradient to a Container in the body
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            // Updated colors as per user request
+            colors: [
+              Color(0xFF825FDD), // Purple
+              Color(0xFF8B4F96), // Grey Neon Pink
+              Color(0xFFEE601C), // Orange
+            ],
+            stops: [0.0, 0.5, 1.0], // Adjust stops if needed for gradient distribution
+          ),
+        ),
+        child: SafeArea(
+          // Use Stack to place the copyright at the very bottom, over the main Row content
+          child: Stack(
+            children: [
+              // Main content row for left and right sections
+              Row(
+                children: [
+                  // Left Section: Logo, Text, Buttons
+                  Expanded(
+                    flex: 1, // Takes equal space
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 60.0, vertical: 40.0),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center, // Vertically center content
+                        crossAxisAlignment: CrossAxisAlignment.start, // Align content to the start (left)
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
+                          // Brniaga Logo and Text
+                            Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              Row(
-                                children: [
-                                  Image.asset(
-                                    'assets/images/placeholder.png',
-                                    height: 100.0,
-                                    width: 100.0,
-                                  ),
-                                ],
+                              SizedBox(width: 25),
+                              Image.asset(
+                              'assets/images/Placeholder_small.png',
+                              height: 150,
+                              width: 150,
                               ),
-                              const Text(
-                                'Welcome Back!',
-                                style: TextStyle(
-                                  fontSize: 30.0,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF111827),
-                                ),
+                              SizedBox(width: 25),
+                              Image.asset(
+                              'assets/images/Placeholder_text.png',
+                              height: 300,
+                              width: 300,
                               ),
-                              const SizedBox(height: 8.0),
-                              const Text(
-                                'Please enter login details below',
-                                style: TextStyle(
-                                  fontSize: 16.0,
-                                  color: Color(0xFF4B5563),
-                                ),
-                              ),
+                              // const SizedBox(width: 10),
+                              // const Text(
+                              // 'Brniaga',
+                              // style: TextStyle(
+                              //   color: Colors.white,
+                              //   fontSize: 60,
+                              //   fontWeight: FontWeight.bold,
+                              // ),
+                              // ),
                             ],
-                          ),
-                          const SizedBox(height: 32.0),
-                          TextFormField(
-                            controller: _emailController,
-                            decoration: const InputDecoration(
-                              labelText: 'Email',
-                              hintText: 'Enter the email',
                             ),
-                            keyboardType: TextInputType.emailAddress,
-                          ),
-                          const SizedBox(height: 16.0),
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Password',
-                              hintText: 'Enter the Password',
+                          // Main tagline text
+                          const Text(
+                            'A toolbox for entrepreneurial success,\nwith just a click.',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 48, // Large and bold for impact
+                              fontWeight: FontWeight.bold, // Made bold as requested
+                              height: 1.2, // Adjust line height for better readability
                             ),
                           ),
-                          const SizedBox(height: 12.0),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: RichText(
-                              text: TextSpan(
-                                text: 'Forgot password?',
-                                style: const TextStyle(
-                                  color: Color(0xFF2563EB),
-                                  fontWeight: FontWeight.w600,
-                                  decoration: TextDecoration.underline,
-                                ),
-                                recognizer: TapGestureRecognizer()
-                                  ..onTap = _handleForgotPassword,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24.0),
-                          ElevatedButton(
-                            onPressed: _handleSignIn,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2563EB),
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size.fromHeight(50),
-                            ),
-                            child: const Text('Sign in'),
-                          ),
-                          const SizedBox(height: 32.0),
+                          const SizedBox(height: 60), // More space before buttons
+                          // Action Buttons
                           Row(
-                            children: const [
-                              Expanded(
-                                  child: Divider(color: Color(0xFFD1D5DB))),
-                              Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                                child: Text(
-                                  'Or continue',
-                                  style: TextStyle(
-                                    fontSize: 14.0,
-                                    color: Color(0xFF6B7280),
+                            children: [
+                              // Get started! Sign up button
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => const SignupView()),
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFF6D4D).withOpacity(0.48), // Orange with 48% transparency
+                                  foregroundColor: Colors.white, // White font color
+                                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12), // Slightly rounded corners
                                   ),
+                                  elevation: 5, // Subtle shadow
                                 ),
-                              ),
-                              Expanded(
-                                  child: Divider(color: Color(0xFFD1D5DB))),
-                            ],
-                          ),
-                          const SizedBox(height: 32.0),
-                          OutlinedButton(
-                            onPressed: _handleGoogleSignIn, // Call the new handler
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(50),
-                              foregroundColor: const Color(0xFF4B5563),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Image.network(
-                                  'https://img.icons8.com/color/48/000000/google-logo.png',
-                                  height: 24.0,
-                                  width: 24.0,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      const Icon(Icons.g_mobiledata,
-                                          size: 24.0, color: Colors.blue),
-                                ),
-                                const SizedBox(width: 8.0),
-                                const Text('Log in with Google'),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16.0),
-                          OutlinedButton(
-                            onPressed: _handleSignInWithPhone,
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(50),
-                              foregroundColor: const Color(0xFF4B5563),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.phone,
-                                    size: 24.0, color: Color(0xFF2563EB)),
-                                SizedBox(width: 8.0),
-                                Text('Sign in with Phone'),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24.0),
-                          Center(
-                            child: RichText(
-                              text: TextSpan(
-                                text: "Don't have an account? ",
-                                style: const TextStyle(
-                                  color: Color(0xFF4B5563),
-                                  fontSize: 16.0,
-                                ),
-                                children: [
-                                  TextSpan(
-                                    text: 'Sign Up',
-                                    style: const TextStyle(
-                                      color: Color(0xFF2563EB),
-                                      fontWeight: FontWeight.w600,
-                                      decoration: TextDecoration.underline,
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min, // To keep button content compact
+                                  children: [
+                                    Text(
+                                      'Get started! Sign up', // Text includes "Get started!" which needs to be bold.
+                                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), // Made bold as requested
                                     ),
-                                    recognizer: TapGestureRecognizer()
-                                      ..onTap = () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(builder: (context) => const SignupView()),
-                                        );
-                                      },
-                                  ),
-                                ],
+                                    SizedBox(width: 10),
+                                    Icon(Icons.arrow_forward_ios, size: 18), // Forward arrow icon
+                                  ],
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 30), // Space between buttons
+                              // Already a Member? Log In button (replaces old "Sign in with Phone" or similar left-aligned buttons)
+                              TextButton(
+                                onPressed: () {
+                                  // No specific action here as the main login is on the right,
+                                  // but it could scroll to the login form or highlight it.
+                                  // For now, it could be a redundant "Log In" if the user is already on the login page.
+                                  // Or navigate to the same current view, ensuring the right side is visible.
+                                },
+                                style: TextButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFF6D4D).withOpacity(0.48), // Orange with 48% transparency
+                                  foregroundColor: Colors.white, // White font color
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                                  shape: RoundedRectangleBorder( // Apply shape for background
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Already a Member? Log In', // Text includes "Already a Member?" which needs to be bold.
+                                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), // Made bold as requested
+                                    ),
+                                    SizedBox(width: 10),
+                                    Icon(Icons.arrow_forward_ios, size: 18),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
                   ),
+
+                  // Right Section: Login Form
+                  Expanded(
+                    flex: 1, // Takes equal space
+                    child: Center(
+                      child: Container(
+                        width: 450, // Fixed width for the login card as seen in the design
+                        padding: const EdgeInsets.all(40.0), // Padding inside the card
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2), // Translucent white for the frosted glass effect
+                          borderRadius: BorderRadius.circular(25), // More rounded corners
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.15), // Subtle shadow for depth
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                              offset: const Offset(0, 10), // Shadow offset
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min, // Column shrinks to fit children vertically
+                          crossAxisAlignment: CrossAxisAlignment.center, // Center contents horizontally within the card
+                          children: [
+                            const Text(
+                              'Log In',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 36,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 40), // Space after title
+                            // Email Input Field
+                            TextField(
+                              controller: _emailController,
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                              cursorColor: Colors.white,
+                              keyboardType: TextInputType.emailAddress,
+                              decoration: InputDecoration(
+                                labelText: 'E-mail',
+                                labelStyle: const TextStyle(color: Colors.white70), // Lighter label text
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.1), // Slightly transparent background for input
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none, // No visible border line
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(color: Colors.white70, width: 1.5), // Subtle focus border
+                                ),
+                                hintText: 'email@example.com', // Hint text from image
+                                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                              ),
+                            ),
+                            const SizedBox(height: 25), // Space between fields
+                            // Password Input Field
+                            TextField(
+                              controller: _passwordController,
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                              cursorColor: Colors.white,
+                              obscureText: _obscureText,
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                labelStyle: const TextStyle(color: Colors.white70),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.1),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(color: Colors.white70, width: 1.5),
+                                ),
+                                hintText: '••••••••••••', // Hint text from image
+                                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscureText ? Icons.visibility : Icons.visibility_off,
+                                    color: Colors.white70,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscureText = !_obscureText;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            // Forgot Password?
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: _handleForgotPassword, // Linked to existing function
+                                child: const Text(
+                                  'Forgot Password?',
+                                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 30),
+                            // Log In Button
+                            SizedBox(
+                              width: double.infinity, // Button takes full width of the card
+                              child: ElevatedButton(
+                                onPressed: _handleSignIn, // Linked to existing function
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFF6D4D).withOpacity(0.48), // Orange with 48% transparency
+                                  foregroundColor: Colors.white, // White font color
+                                  padding: const EdgeInsets.symmetric(vertical: 20),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 5,
+                                ),
+                                child: const Text(
+                                  'Log In',
+                                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold), // Made bold as requested
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 30),
+                            // Or Continue With separator
+                            const Text(
+                              'Or Continue With',
+                              style: TextStyle(color: Colors.white70, fontSize: 16),
+                            ),
+                            const SizedBox(height: 30),
+                            // Continue with Google Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _handleGoogleSignIn, // Linked to existing function
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.white70, width: 1.5), // White border
+                                  foregroundColor: Colors.white, // White text and icon
+                                  padding: const EdgeInsets.symmetric(vertical: 18),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                icon: Image.network(
+                                  'https://img.icons8.com/color/48/000000/google-logo.png', // Google logo from original code
+                                  height: 24.0,
+                                  width: 24.0,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Icon(Icons.g_mobiledata, size: 24.0, color: Colors.white), // Fallback icon
+                                ),
+                                label: const Text(
+                                  'Continue with Google',
+                                  style: TextStyle(fontSize: 18),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 15),
+                            // Continue with Phone Button (replaces Apple button)
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _handleSignInWithPhone, // Linked to existing phone handler
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.white70, width: 1.5),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 18),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.phone_android, size: 24), // Changed to phone icon
+                                label: const Text(
+                                  'Continue with phone', // Changed button text
+                                  style: TextStyle(fontSize: 18),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // Copyright Footer (positioned at the bottom using Align)
+              const Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 25.0), // Padding from the bottom edge
+                  child: Text(
+                    'Copyright © 2025 Brniaga by Maow Technological Advancement',
+                    style: TextStyle(color: Colors.white, fontSize: 14), // Made white with no transparency
+                  ),
                 ),
-                if (isLargeScreen) const Expanded(child: AuthCarousel()),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 }
+
+// Re-using existing dialogs, ensuring they are correctly imported and accessible.
+// These dialogs (_ForgotPasswordDialog, _PhoneSignInDialog) must be defined
+// in the same file or properly imported if they are in separate files.
+// Assuming they are in the same file as per the provided `login_view.desktop.dart`.
 
 class _ForgotPasswordDialog extends StatefulWidget {
   final ValueChanged<String> onEmailSubmitted;
@@ -405,7 +569,7 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
     widget.onEmailSubmitted(email);
 
     if (mounted) {
-      Navigator.of(context).pop();
+      // Navigator.of(context).pop(); // Let the calling function handle pop if needed
     }
 
     setState(() {
@@ -465,7 +629,7 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
                 style: TextStyle(
                   fontSize: 24.0,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF111827),
+                  color: Color(0xFF111827), // Consider making this white or a theme color for consistency if dialogs are themed
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -474,7 +638,7 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
                 'Enter your email address below to receive a password reset link.',
                 style: TextStyle(
                   fontSize: 16.0,
-                  color: Color(0xFF4B5563),
+                  color: Color(0xFF4B5563), // Consider making this white or a theme color
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -492,7 +656,7 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
               ElevatedButton(
                 onPressed: _isLoading ? null : _submitEmail,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563EB),
+                  backgroundColor: const Color(0xFF2563EB), // Default blue, consider matching new design accents
                   foregroundColor: Colors.white,
                   minimumSize: const Size.fromHeight(50),
                 ),
@@ -512,7 +676,7 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
                 onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
                 child: Text(
                   'Cancel',
-                  style: TextStyle(color: Theme.of(context).primaryColor),
+                  style: TextStyle(color: Theme.of(context).primaryColor), // Default blue
                 ),
               ),
             ],
@@ -604,7 +768,7 @@ class _PhoneSignInDialogState extends State<_PhoneSignInDialog> {
                 style: TextStyle(
                   fontSize: 24.0,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF111827),
+                  color: Color(0xFF111827), // Consider matching new design accents
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -615,7 +779,7 @@ class _PhoneSignInDialogState extends State<_PhoneSignInDialog> {
                     : 'Enter your phone number to sign in or create an account.',
                 style: const TextStyle(
                   fontSize: 16.0,
-                  color: Color(0xFF4B5563),
+                  color: Color(0xFF4B5563), // Consider matching new design accents
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -660,11 +824,15 @@ class _PhoneSignInDialogState extends State<_PhoneSignInDialog> {
                             );
                             await FirebaseAuth.instance.signInWithCredential(credential);
                             if (mounted) {
-                              widget.onSignInSuccess(_phoneNumberController.text.trim());
+                               widget.onSignInSuccess(_phoneNumberController.text.trim());
                             }
                           } on FirebaseAuthException catch (e) {
                             setState(() => _isLoading = false);
                             widget.onSignInFailed(e.message ?? 'OTP verification failed.');
+                          } finally {
+                             if (mounted) {
+                               Navigator.of(context).pop(); // Pop the dialog on success or failure
+                             }
                           }
                         } else {
                           final phoneNumber = _phoneNumberController.text.trim();
@@ -684,6 +852,10 @@ class _PhoneSignInDialogState extends State<_PhoneSignInDialog> {
                                 }
                               } on FirebaseAuthException catch (e) {
                                 debugPrint('Verification completed with error: ${e.message}');
+                              } finally {
+                                 if (mounted) {
+                                   Navigator.of(context).pop(); // Pop the dialog on completion
+                                 }
                               }
                             },
                             verificationFailed: (FirebaseAuthException e) {
@@ -707,7 +879,7 @@ class _PhoneSignInDialogState extends State<_PhoneSignInDialog> {
                         }
                       },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563EB),
+                  backgroundColor: const Color(0xFF2563EB), // Default blue
                   foregroundColor: Colors.white,
                   minimumSize: const Size.fromHeight(50),
                 ),

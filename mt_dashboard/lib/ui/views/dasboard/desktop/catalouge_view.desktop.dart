@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:mt_dashboard/ui/views/dasboard/dashboard_view.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/calendar_view.dart';
@@ -30,6 +31,177 @@ void main() {
   runApp(const CatalougeViewDesktop());
 }
 
+// --- User Dropdown Card Widget ---
+class _UserDropdownCard extends StatelessWidget {
+  final String? userId;
+  final FirebaseFirestore firestore;
+
+  const _UserDropdownCard({
+    Key? key,
+    required this.userId,
+    required this.firestore,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    if (userId == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text('No user info available.'),
+        ),
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: firestore.collection('users').doc(userId).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+        if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text('Error loading user info.'),
+            ),
+          );
+        }
+
+        final userData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
+        final displayName = userData['name'] as String? ?? 'User';
+        final email = userData['email'] as String? ?? 'No email';
+        // Updated to use 'profilePictureUrl' for the profile image
+        final profilePictureUrl = userData['profilePictureUrl'] as String?;
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                // Wrap CircleAvatar with GestureDetector for tap functionality
+                GestureDetector(
+                  onTap: () async {
+                    if (userId != null) {
+                      await _changeProfilePicture(context, userId!, firestore);
+                    }
+                  },
+                  child: CircleAvatar(
+                    radius: 24,
+                    backgroundImage: profilePictureUrl != null ? NetworkImage(profilePictureUrl) : null,
+                    child: profilePictureUrl == null ? const Icon(Icons.person, size: 32) : null,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        displayName,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        email,
+                        style: const TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.arrow_drop_down),
+                  onSelected: (value) {
+                    if (value == 'Logout') {
+                      FirebaseAuth.instance.signOut();
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (context) => const HomeView()),
+                      );
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'Logout',
+                      child: Text('Logout'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Function to handle changing profile picture
+  Future<void> _changeProfilePicture(BuildContext context, String userId, FirebaseFirestore firestore) async {
+    final ImagePicker picker = ImagePicker();
+    XFile? image;
+
+    if (kIsWeb) {
+      // Web specific file picking
+      final result = await FilePicker.platform.pickFiles(type: FileType.image);
+      if (result != null && result.files.single.bytes != null) {
+        final fileName = result.files.single.name;
+        final fileBytes = result.files.single.bytes!;
+        image = XFile.fromData(fileBytes, name: fileName);
+      }
+    } else {
+      // Mobile specific image picking
+      image = await picker.pickImage(source: ImageSource.gallery);
+    }
+
+    if (image != null) {
+      try {
+        // Upload image to Firebase Storage
+        final storageRef = FirebaseStorage.instance.ref().child('profile_pictures').child('$userId/${image.name}');
+        UploadTask uploadTask;
+
+        if (kIsWeb) {
+          uploadTask = storageRef.putData(await image.readAsBytes());
+        } else {
+          uploadTask = storageRef.putFile(File(image.path));
+        }
+
+        final snapshot = await uploadTask;
+        final downloadUrl = await snapshot.ref.getDownloadURL();
+
+        // Update profilePictureUrl in Firestore
+        await firestore.collection('users').doc(userId).update({
+          'profilePictureUrl': downloadUrl,
+        });
+
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile picture updated successfully!')),
+        );
+      } on FirebaseException catch (e) {
+        print('Error uploading profile picture: ${e.message}');
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update profile picture: ${e.message}')),
+        );
+      } catch (e) {
+        print('Unexpected error: $e');
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('An unexpected error occurred: $e')),
+        );
+      }
+    } else {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No image selected.')),
+      );
+    }
+  }
+}
+
 class CatalougeViewDesktop extends StatelessWidget {
   const CatalougeViewDesktop({super.key});
 
@@ -46,22 +218,22 @@ class CatalougeViewDesktop extends StatelessWidget {
           color: Colors.white,
           elevation: 0.5,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.0),
+            borderRadius: BorderRadius.circular(30.0),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: BorderSide.none, // No border
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
+            borderRadius: BorderRadius.circular(30.0),
             borderSide: const BorderSide(color: Colors.blue, width: 1.0), // Blue border on focus
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -82,7 +254,11 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   // A simple state for sidebar expansion, not fully interactive for this example
-  bool _isSidebarExpanded = true;
+  bool _isSidebarExpanded = false;
+
+  // Add userId and firestore variables
+  final String? _userId = FirebaseAuth.instance.currentUser?.uid;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   Widget build(BuildContext context) {
@@ -90,16 +266,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: Row(
         children: [
           // Sidebar
-          SizedBox(
-            width: _isSidebarExpanded ? 240 : 70, // Adjust width based on expansion state
-            child: const Sidebar(),
+          MouseRegion(
+            onEnter: (event) {
+              setState(() {
+                _isSidebarExpanded = true;
+              });
+            },
+            onExit: (event) {
+              setState(() {
+                _isSidebarExpanded = false;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: _isSidebarExpanded ? 240 : 70,
+              child: Sidebar(
+                isExpanded: _isSidebarExpanded,
+              ),
+            ),
           ),
           // Main Content Area
           Expanded(
             child: Column(
               children: [
-                // Top App Bar
-                const CustomAppBar(),
                 // Main Dashboard Content
                 Expanded(
                   child: SingleChildScrollView(
@@ -110,40 +300,490 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         // Charts Section
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Outpatients vs. Inpatients Trend
-                            const Expanded(
-                              flex: 1,
-                              child: CatalougeCard(
-                                title: 'Catalogue',
-                                chartColor: Color(0xFF8B5CF6), // Purple
+                            children: [
+                            Expanded(
+                              flex: 2, // Adjust flex to give more space to the left card
+                              child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start, // Align to the left
+                              children: [
+                                Text(
+                                'Inventory Management',
+                                style: TextStyle(
+                                  fontSize: 60.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[800],
+                                ),
+                                ),
+                              ],
                               ),
                             ),
-                            // const Expanded(
-                            //    flex: 1,
-                            //    child: CatalougeCard(
-                            //      title: 'Catalogue',
-                            //      chartColor: Color(0xFF8B5CF6), // Purple
-                            //    ),
-                            // ),
+                          const SizedBox(width: 24.0),
+                            Expanded(
+                            flex: 1, // Adjust flex for the right card
+                            child: Column(
+                              children: [
+                                Row(
+                                  // New Row for User Info Card and Buttons
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  children: [
+                                    const SizedBox(width: 16.0),
+                                    IconButton(
+                                      icon: Icon(Icons.notifications_none, color: Colors.grey[600]),
+                                      onPressed: () {},
+                                    ),
+                                    const SizedBox(width: 16.0),
+                                    IconButton(
+                                      icon: Icon(Icons.settings_outlined, color: Colors.grey[600]),
+                                      onPressed: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(builder: (context) => const SettingsView()),
+                                        );
+                                      },
+                                    ),
+                                    const SizedBox(width: 24.0),
+                                    Expanded(
+                                      child: _UserDropdownCard(
+                                        userId: _userId,
+                                        firestore: _firestore,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          ],
+                        ),
+                        const SizedBox(height: 24.0),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                          // Single card spanning the row
+                          Expanded(
+                            child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Left column (smaller)
+                                Expanded(
+                                flex: 1,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  children: [
+                                  Text(
+                                    'Status of Stock',
+                                    style: TextStyle(
+                                    fontSize: 24.0,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey[800],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16.0),
+                                  StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                                    stream: FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(FirebaseAuth.instance.currentUser?.uid)
+                                      .collection('catalogs')
+                                      .snapshots(),
+                                    builder: (context, catalogSnapshot) {
+                                    if (catalogSnapshot.connectionState == ConnectionState.waiting) {
+                                      return const Center(child: CircularProgressIndicator());
+                                    }
+                                    if (catalogSnapshot.hasError) {
+                                      return const Text('Error loading stock data');
+                                    }
+                                    final catalogs = catalogSnapshot.data?.docs ?? [];
+                                    if (catalogs.isEmpty) {
+                                      return const Text('No products found.');
+                                    }
+                                    return FutureBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+                                      future: Future.wait(
+                                      catalogs.map((catalog) async {
+                                        final products = await catalog.reference.collection('products').get();
+                                        return products.docs;
+                                      }),
+                                      ).then((listOfLists) => listOfLists.expand((x) => x).toList()),
+                                      builder: (context, productSnapshot) {
+                                      if (productSnapshot.connectionState == ConnectionState.waiting) {
+                                        return const Center(child: CircularProgressIndicator());
+                                      }
+                                      if (productSnapshot.hasError) {
+                                        return const Text('Error loading stock data');
+                                      }
+                                      final docs = productSnapshot.data ?? [];
+                                      int available = 0;
+                                      int lowStock = 0;
+                                      int notAvailable = 0;
+                                      for (final doc in docs) {
+                                        final data = doc.data();
+                                        final quantity = data['quantity'] ?? 0;
+                                        if (quantity > 0 && quantity <= 10) {
+                                        lowStock++;
+                                        } else if (quantity > 10) {
+                                        available++;
+                                        } else {
+                                        notAvailable++;
+                                        }
+                                      }
+                                      final total = available + lowStock + notAvailable;
+                                      if (total == 0) {
+                                        return const Text('No products found.');
+                                      }
+                                      return Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                        const SizedBox(height: 32),
+                                        SizedBox(
+                                          height: 200,
+                                          child: PieChart(
+                                          PieChartData(
+                                            sections: [
+                                            PieChartSectionData(
+                                              value: available.toDouble(),
+                                              title: '',
+                                              color: const Color.fromARGB(255, 183, 255, 186),
+                                              radius: 80,
+                                            ),
+                                            PieChartSectionData(
+                                              value: lowStock.toDouble(),
+                                              title: '',
+                                              color: Colors.amber,
+                                              radius: 80,
+                                            ),
+                                            PieChartSectionData(
+                                              value: notAvailable.toDouble(),
+                                              title: '',
+                                              color: Colors.redAccent,
+                                              radius: 80,
+                                            ),
+                                            ],
+                                            sectionsSpace: 2,
+                                            centerSpaceRadius: 40,
+                                          ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 48),
+                                        // Legends underneath
+                                        Row(
+                                          children: [
+                                          Row(
+                                            children: [
+                                            Container(
+                                              width: 18,
+                                              height: 18,
+                                              decoration: const BoxDecoration(
+                                              color: Color.fromARGB(255, 183, 255, 186),
+                                              shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Text('Available'),
+                                            ],
+                                          ),
+                                          const SizedBox(width: 32),
+                                          Row(
+                                            children: [
+                                            Container(
+                                              width: 18,
+                                              height: 18,
+                                              decoration: const BoxDecoration(
+                                              color: Colors.amber,
+                                              shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Text('Low Stock'),
+                                            ],
+                                          ),
+                                          const SizedBox(width: 32),
+                                          Row(
+                                            children: [
+                                            Container(
+                                              width: 18,
+                                              height: 18,
+                                              decoration: const BoxDecoration(
+                                              color: Colors.redAccent,
+                                              shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Text('Not Available'),
+                                            ],
+                                          ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        // Show numbers above chart
+                                        Row(
+                                          children: [
+                                          Text(
+                                            'Available: $available',
+                                            style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Color.fromARGB(255, 183, 255, 186),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 42),
+                                          Text(
+                                            'Low Stock: $lowStock',
+                                            style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.amber,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 42),
+                                          Text(
+                                            'Not Available: $notAvailable',
+                                            style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.redAccent,
+                                            ),
+                                          ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        ],
+                                      );
+                                      },
+                                    );
+                                    },
+                                  )
+                                  ],
+                                ),
+                                ),
+                                const SizedBox(width: 32.0),
+                                // Right column (bigger)
+                                Expanded(
+                                flex: 2,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  children: [
+                                  Text(
+                                    'Revenue Vs. Costs',
+                                    style: TextStyle(
+                                    fontSize: 20.0,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey[800],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16.0),
+                                  SizedBox(
+                                    height: 220,
+                                    child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                                    stream: FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(FirebaseAuth.instance.currentUser?.uid)
+                                      .collection('revenue_costs')
+                                      .orderBy('date', descending: false)
+                                      .snapshots(),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState == ConnectionState.waiting) {
+                                      return const Center(child: CircularProgressIndicator());
+                                      }
+                                      if (snapshot.hasError) {
+                                      return const Text('Error loading revenue/costs data');
+                                      }
+                                      final docs = snapshot.data?.docs ?? [];
+                                      if (docs.isEmpty) {
+                                      // Show a placeholder if no data
+                                      return Center(
+                                        child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.insert_chart_outlined, size: 48, color: Colors.grey[400]),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                          'No revenue/costs data found.',
+                                          style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                                          ),
+                                        ],
+                                        ),
+                                      );
+                                      }
 
-                            // const Expanded(
-                            //    flex: 1,
-                            //    child: ChartCard(
-                            //      title: 'Catalogue',
-                            //      chartColor: Color(0xFF8B5CF6), // Purple
-                            //    ),
-                            // ),
+                                      final List<FlSpot> revenueSpots = [];
+                                      final List<FlSpot> costSpots = [];
+                                      final List<String> labels = [];
 
+                                      for (int i = 0; i < docs.length; i++) {
+                                      final data = docs[i].data();
+                                      final revenue = (data['revenue'] ?? 0).toDouble();
+                                      final cost = (data['cost'] ?? 0).toDouble();
+                                      revenueSpots.add(FlSpot(i.toDouble(), revenue));
+                                      costSpots.add(FlSpot(i.toDouble(), cost));
+                                      final date = data['date'];
+                                      if (date is Timestamp) {
+                                        labels.add('${date.toDate().month}/${date.toDate().day}');
+                                      } else {
+                                        labels.add('Day ${i + 1}');
+                                      }
+                                      }
+
+                                      return LineChart(
+                                      LineChartData(
+                                        gridData: FlGridData(show: true),
+                                        titlesData: FlTitlesData(
+                                        leftTitles: AxisTitles(
+                                          sideTitles: SideTitles(showTitles: true, reservedSize: 48),
+                                        ),
+                                        bottomTitles: AxisTitles(
+                                          sideTitles: SideTitles(
+                                          showTitles: true,
+                                          getTitlesWidget: (value, meta) {
+                                            int idx = value.toInt();
+                                            if (idx >= 0 && idx < labels.length) {
+                                            return Text(labels[idx], style: const TextStyle(fontSize: 10));
+                                            }
+                                            return const SizedBox.shrink();
+                                          },
+                                          interval: 1,
+                                          reservedSize: 32,
+                                          ),
+                                        ),
+                                        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                        ),
+                                        borderData: FlBorderData(show: true),
+                                        lineBarsData: [
+                                        LineChartBarData(
+                                          spots: revenueSpots,
+                                          isCurved: true,
+                                          color: Colors.green,
+                                          barWidth: 3,
+                                          dotData: FlDotData(show: false),
+                                          belowBarData: BarAreaData(show: false),
+                                        ),
+                                        LineChartBarData(
+                                          spots: costSpots,
+                                          isCurved: true,
+                                          color: Colors.redAccent,
+                                          barWidth: 3,
+                                          dotData: FlDotData(show: false),
+                                          belowBarData: BarAreaData(show: false),
+                                        ),
+                                        ],
+                                      ),
+                                      );
+                                    },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    children: [
+                                    Container(width: 18, height: 18, decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
+                                    const SizedBox(width: 8),
+                                    const Text('Revenue', style: TextStyle(fontWeight: FontWeight.bold)),
+                                    const SizedBox(width: 32),
+                                    Container(width: 18, height: 18, decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle)),
+                                    const SizedBox(width: 8),
+                                    const Text('Costs', style: TextStyle(fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                  ],
+                                ),
+                                ),
+                              ],
+                              ),
+                            ),
+                            ),
+                          ),
+                          ],
+                        ),
+                        const SizedBox(height: 24.0),
+                        // --- Inventory Row ---
+                        Row(
+                          children: [
+                          Text(
+                            'Inventory',
+                            style: TextStyle(
+                            fontSize: 60,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                            ),
+                          ),
+                          const Spacer(),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert),
+                            itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'option1',
+                              child: Text('Option 1'),
+                            ),
+                            const PopupMenuItem(
+                              value: 'option2',
+                              child: Text('Option 2'),
+                            ),
+                            ],
+                            onSelected: (value) {
+                            // Handle menu selection
+                            },
+                          ),
+                          ],
+                        ),
+                        const SizedBox(height: 12.0),
+                        Card(
+                          child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center, // Center horizontally
+                            children: [
+                            // --- Dropdown for all catalogues from Firebase ---
+                            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                              stream: FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(FirebaseAuth.instance.currentUser?.uid)
+                                .collection('catalogs')
+                                .orderBy('createdAt', descending: false)
+                                .snapshots(),
+                              builder: (context, snapshot) {
+                              if (snapshot.connectionState == ConnectionState.waiting) {
+                                return const SizedBox(
+                                width: 200,
+                                child: Center(child: CircularProgressIndicator()),
+                                );
+                              }
+                              if (snapshot.hasError) {
+                                return const Text('Error loading catalogues');
+                              }
+                              final docs = snapshot.data?.docs ?? [];
+                              if (docs.isEmpty) {
+                                return const Text('No catalogues found.');
+                              }
+                              return _CatalogueDropdown(docs: docs);
+                              },
+                            ),
+                            ],
+                          ),
+                          ),
+                        ),
+                        const SizedBox(height: 24.0),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const SizedBox(width: 16.0),
+                            Expanded(
+                              flex: 1,
+                              child: CatalougeCard(
+                                title: 'Catalogues',
+                                chartColor: const Color(0xFF8B5CF6), // Purple
+                                height: 500, // Adjust height as needed
+                              ),
+                            ),
+                            const SizedBox(width: 24.0),
                             Expanded(
                               flex: 1,
                               child: ProductCard(
                                 title: 'Products',
-                                chartColor: Color.fromARGB(255, 246, 125, 92), // Purple
+                                chartColor: const Color.fromARGB(255, 246, 125, 92), // Orange
+                                height: 500, // Adjust height as needed
                               ),
                             ),
                           ],
-                        ),
+                        )
 
                       ],
                     ),
@@ -158,152 +798,246 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// --- Sidebar Widget ---
+// --- Sidebar Widget (from dashboard_view.desktop.dart) ---
 class Sidebar extends StatelessWidget {
-  const Sidebar({super.key});
+  final bool isExpanded;
+
+  const Sidebar({
+    super.key,
+    required this.isExpanded,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // List of navigation items
+    final navItems = [
+      _SidebarNavItem(
+        icon: Icons.home,
+        label: 'Dashboard',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const DashboardView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.point_of_sale,
+        label: 'POS',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const PosView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.inventory,
+        label: 'Inventory',
+        isSelected: true, // This is the selected item
+        isExpanded: isExpanded,
+        onTap: () {
+          // Already on this page, no action or refresh
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.local_shipping,
+      //   label: 'Orders',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const OrdersView()),
+      //     );
+      //   },
+      // ),
+      _SidebarNavItem(
+        icon: Icons.calendar_month,
+        label: 'Calendar',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const CalendarView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.group,
+        label: 'Customers',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const MemberView()),
+          );
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.history,
+      //   label: 'History',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const HistoryView()),
+      //     );
+      //   },
+      // ),
+    ];
+
     return Container(
-      width: 240, // Fixed width for the sidebar
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      width: isExpanded ? 240 : 70,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF8B5CF6),
+            Color(0xFF6F01FD),
+          ],
+        ),
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(24.0),
+          bottomRight: Radius.circular(24.0),
+        ),
+      ),
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
+          const SizedBox(height: 96.0),
           // Branding
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Center(
-              child: Image.asset(
-              'assets/images/placeholder.png',
-              height: 100,
-              width: 100,
-              // errorBuilder: (context, error, stackTrace) => const Icon(Icons.medical_services, color: Color(0xFF1E40AF), size: 32),
-              ),
+              child: isExpanded
+                  ? Image.asset(
+                      'assets/images/placeholder.png',
+                      height: 100,
+                      width: 100,
+                    )
+                  : Image.asset(
+                      'assets/images/placeholder_small.png',
+                      height: 50,
+                      width: 50,
+                    ),
             ),
-            ),
-            const SizedBox(height: 32.0),
-            ElevatedButton.icon(
-            icon: const Icon(Icons.point_of_sale),
-            label: const Text('POS'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              textStyle: const TextStyle(fontWeight: FontWeight.bold),
-              shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (context) => PosView()));
-            },
           ),
-          // const SizedBox(height: 32.0),
-          // Navigation Items
-          // _SidebarNavItem(icon: Icons.app_registration, label: 'Add Product', onTap: () {}),
           const SizedBox(height: 24.0),
-          _SidebarNavItem(icon: Icons.dashboard, label: 'Overview', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => DashboardView()),
-              );
-          }), // Spacer before other nav items
-          _SidebarNavItem(icon: Icons.inventory, label: 'Catalouges', isSelected: true, onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => CatalougeView()),
-              );
-          }),
-          _SidebarNavItem(icon: Icons.local_shipping, label: 'Orders', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => OrdersView()
+          // Center navigation items vertically
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: navItems,
+              ),
             ),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.calendar_month, label: 'Calendar', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => CalendarView()
+          ),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(24.0),
+                child: InkWell(
+                  onTap: () async {},
+                  borderRadius: BorderRadius.circular(24.0),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24.0),
+                    ),
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(width: 12.0),
+                          Text(
+                            'Basic Plan',
+                            style: TextStyle(
+                              fontSize: 16.0,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF6F01FD),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
-            );
-          }),
-          _SidebarNavItem(icon: Icons.group, label: 'Members', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => MemberView()),
-              );
-          }),
-          _SidebarNavItem(icon: Icons.history, label: 'History', onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const HistoryView()),
-              );
-          }),
-          const Spacer(), // Pushes "Get mobile app" to bottom
-            _SidebarNavItem(
-            icon: Icons.settings,
-            label: 'Settings',
-            onTap: () {
-              Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => SettingsView()),
-              );
-            },
-            ),
-            _SidebarNavItem(icon: Icons.logout_outlined, label: 'Logout', onTap: () async {
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 16.0 : 0.0, vertical: 8.0),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(24.0),
+              child: InkWell(
+                onTap: () async {
+                  final user = FirebaseAuth.instance.currentUser;
+                  final userId = user?.uid;
+
+                  if (userId != null) {
+                    try {
+                      await FirebaseFirestore.instance.collection('users').doc(userId).collection('activity').add({
+                        'type': 'Logout',
+                        'message': 'User logged out',
+                        'timestamp': FieldValue.serverTimestamp(),
+                      });
+                      print('DEBUG: Logout event logged to "activity" collection for user $userId');
+                    } catch (e) {
+                      print('ERROR: Failed to log logout event for user $userId: $e');
+                    }
+                  }
+
                   await FirebaseAuth.instance.signOut();
-                  // Optionally, show a snackbar or navigate to login/home page
-                    Navigator.of(context).pushReplacement(
-                     MaterialPageRoute(builder: (context) => const HomeView()),
-                   );
-                 },)
-          // const SizedBox(height: 24.0),
-          // Get mobile app card
-          // Padding(
-          //    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          //    child: Card(
-          //      color: const Color(0xFFEFF6FF), // Light blue background
-          //      elevation: 0,
-          //      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-          //      child: Padding(
-          //        padding: const EdgeInsets.all(16.0),
-          //        child: Column(
-          //          children: [
-          //            Image.network(
-          //              'https://placehold.co/80x80/E0E7FF/4F46E5?text=App', // Placeholder for mobile app icon
-          //              errorBuilder: (context, error, stackTrace) => const Icon(Icons.phone_android, color: Colors.blueAccent, size: 60),
-          //            ),
-          //            const SizedBox(height: 8.0),
-          //            const Text(
-          //              'Get mobile app',
-          //              style: TextStyle(
-          //                fontSize: 16.0,
-          //                fontWeight: FontWeight.bold,
-          //                color: Color(0xFF1E40AF),
-          //              ),
-          //              textAlign: TextAlign.center,
-          //            ),
-          //            const SizedBox(height: 8.0),
-          //            Row(
-          //              mainAxisAlignment: MainAxisAlignment.center,
-          //              children: [
-          //                // Placeholder for App Store icon
-          //                Image.network(
-          //                  'https://placehold.co/24x24/FFFFFF/000000?text=A',
-          //                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.apple, size: 24, color: Colors.grey),
-          //                  height: 24,
-          //                  width: 24,
-          //                ),
-          //                const SizedBox(width: 8.0),
-          //                // Placeholder for Google Play icon
-          //                Image.network(
-          //                  'https://placehold.co/24x24/FFFFFF/000000?text=G',
-          //                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.android, size: 24, color: Colors.grey),
-          //                  height: 24,
-          //                  width: 24,
-          //                ),
-          //              ],
-          //            ),
-          //          ],
-          //        ),
-          //      ),
-          //    ),
-          // ),
+                  if (!context.mounted) return;
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HomeView()),
+                  );
+                },
+                borderRadius: BorderRadius.circular(24.0),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFB8C63),
+                        Color(0xFFF74403),
+                        Color(0xFFFB8C63),
+                      ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24.0),
+                  ),
+                  child: Container(
+                    height: 48,
+                    alignment: isExpanded ? Alignment.center : Alignment.center,
+                    padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0),
+                    child: isExpanded
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.logout_outlined, color: Colors.white),
+                              SizedBox(width: 12.0),
+                              Text(
+                                'Logout',
+                                style: TextStyle(
+                                  fontSize: 16.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Icon(Icons.logout_outlined, color: Colors.white, size: 24),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -315,6 +1049,7 @@ class _SidebarNavItem extends StatelessWidget {
   final String label;
   final bool isSelected;
   final bool isPrimary;
+  final bool isExpanded;
   final VoidCallback onTap;
 
   const _SidebarNavItem({
@@ -323,64 +1058,61 @@ class _SidebarNavItem extends StatelessWidget {
     this.isSelected = false,
     this.isPrimary = false,
     required this.onTap,
+    required this.isExpanded,
   });
 
   @override
   Widget build(BuildContext context) {
-    Color itemBackgroundColor = isSelected ? const Color(0xFFDBEAFE) : Colors.transparent; // Blue-100 for selected
+    const Color contentBackgroundColor = Color(0xFFF1F5F9);
 
-    Color itemIconColor = isPrimary
-        ? Colors.white // Primary button icon color
-        : isSelected
-            ? const Color(0xFF3B82F6) // Blue-500 for selected icon
-            : Colors.grey[600]!; // Default grey icon color
+    Color itemIconColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
 
-    Color itemTextColor = isPrimary
-        ? Colors.white // Primary button text color
-        : isSelected
-            ? const Color(0xFF3B82F6) // Blue-500 for selected text
-            : Colors.grey[800]!; // Default grey text color
+    Color itemTextColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
 
-
-    return Material(
-      color: itemBackgroundColor,
-      borderRadius: const BorderRadius.horizontal(right: Radius.circular(12.0)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: const BorderRadius.horizontal(right: Radius.circular(12.0)),
-        child: Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          alignment: Alignment.centerLeft,
-          decoration: isSelected
-              ? const BoxDecoration(
-                  border: Border(left: BorderSide(color: Color(0xFF3B82F6), width: 3.0)), // Blue-500
-                )
-              : null,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: itemIconColor,
-              ),
-              const SizedBox(width: 12.0),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 16.0,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: itemTextColor,
-                ),
-              ),
-              if (isPrimary) const Spacer(), // Pushes icon to right (for Register patient)
-            ],
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Material(
+        color: isSelected ? contentBackgroundColor : Colors.transparent,
+        borderRadius: isSelected
+            ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+            : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: isSelected
+              ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+              : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+          child: Container(
+            height: 48,
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0.0),
+            alignment: isExpanded ? Alignment.centerLeft : Alignment.center,
+            child: isExpanded
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        color: itemIconColor,
+                      ),
+                      const SizedBox(width: 12.0),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16.0,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: itemTextColor,
+                        ),
+                      ),
+                    ],
+                  )
+                : Icon(icon, color: itemIconColor, size: 24),
           ),
         ),
       ),
     );
   }
 }
+
 
 // --- Placeholder Chart Card ---
 class CatalougeCard extends StatelessWidget {
@@ -1959,6 +2691,741 @@ class DollarSignTextInputFormatter extends TextInputFormatter {
     return TextEditingValue(
       text: text,
       selection: TextSelection.collapsed(offset: offset),
+    );
+  }
+}
+
+// Add this widget to fix the error
+class _CatalogueDropdown extends StatefulWidget {
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs;
+  const _CatalogueDropdown({required this.docs, super.key});
+
+  @override
+  State<_CatalogueDropdown> createState() => _CatalogueDropdownState();
+}
+
+class _CatalogueDropdownState extends State<_CatalogueDropdown> {
+  String? selectedCatalogueId;
+
+  // Sorting state for each column
+  String productSort = 'asc';
+  String codeSort = 'asc';
+  String categorySort = 'asc';
+  String priceSort = 'asc';
+  String dateSort = 'asc';
+  String statusFilter = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.docs.isNotEmpty) {
+      selectedCatalogueId = widget.docs.first.id;
+    }
+  }
+
+  // Helper for dropdown sort icon
+  Widget _sortDropdown({
+    required String sortOrder,
+    required Function(String) onChanged,
+  }) {
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: sortOrder,
+        items: const [
+          DropdownMenuItem(value: 'asc', child: Icon(Icons.arrow_upward, size: 16)),
+          DropdownMenuItem(value: 'desc', child: Icon(Icons.arrow_downward, size: 16)),
+        ],
+        onChanged: (val) => onChanged(val ?? 'asc'),
+        style: const TextStyle(color: Colors.black87, fontSize: 13),
+        dropdownColor: Colors.white,
+        isDense: true,
+        icon: const Icon(Icons.arrow_drop_down, size: 18),
+      ),
+    );
+  }
+
+  // Stock status dropdown
+  Widget _statusDropdown({
+    required String value,
+    required Function(String) onChanged,
+  }) {
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: value.isEmpty ? null : value,
+        items: const [
+          DropdownMenuItem(value: '', child: Icon(Icons.arrow_drop_down, size: 16)),
+          DropdownMenuItem(value: 'Available', child: Text('Available')),
+          DropdownMenuItem(value: 'Low Stock', child: Text('Low Stock')),
+          DropdownMenuItem(value: 'Not Available', child: Text('Not Available')),
+        ],
+        onChanged: (val) => onChanged(val ?? ''),
+        style: const TextStyle(color: Colors.black87, fontSize: 13),
+        dropdownColor: Colors.white,
+        isDense: true,
+        icon: const Icon(Icons.arrow_drop_down, size: 18),
+      ),
+    );
+  }
+
+  // Search controller for filtering
+  final TextEditingController _searchController = TextEditingController();
+
+  // Track selected product for manage/edit
+  String? _selectedProductId;
+  String? _selectedProductCatalogueId;
+  Map<String, dynamic>? _selectedProductData;
+  List<dynamic>? _selectedProductImages;
+
+  // Helper to open edit dialog for selected product
+  Future<void> _editSelectedProduct(BuildContext context) async {
+    if (_selectedProductId == null || _selectedProductCatalogueId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a product to manage.')),
+      );
+      return;
+    }
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _AddProductDialog(
+        userId: userId,
+        catalogId: _selectedProductCatalogueId,
+        initialData: _selectedProductData,
+        initialImages: _selectedProductImages,
+        productDocId: _selectedProductId,
+      ),
+    );
+    if (result != null) {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('catalogs')
+          .doc(_selectedProductCatalogueId)
+          .collection('products')
+          .doc(_selectedProductId)
+          .update({
+        ...result,
+        'categoryName': _selectedProductData?['categoryName'] ?? '',
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Build the dropdown items, add "Show All" at the top
+    final List<DropdownMenuItem<String>> catalogueDropdownItems = [
+      const DropdownMenuItem<String>(
+        value: 'all',
+        child: Text('Show All Products', style: TextStyle(fontSize: 13)),
+      ),
+      ...widget.docs.map((doc) => DropdownMenuItem<String>(
+            value: doc.id,
+            child: Text(
+              doc.data()['name'] ?? 'Unnamed',
+              style: const TextStyle(fontSize: 13),
+            ),
+          )),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              // Catalogue dropdown with "Show All"
+              Container(
+                width: 220,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: selectedCatalogueId ?? 'all',
+                    items: catalogueDropdownItems,
+                    onChanged: (value) {
+                      setState(() {
+                        selectedCatalogueId = value;
+                        // Reset selection when catalogue changes
+                        _selectedProductId = null;
+                        _selectedProductCatalogueId = null;
+                        _selectedProductData = null;
+                        _selectedProductImages = null;
+                      });
+                    },
+                    style: const TextStyle(color: Colors.black87, fontSize: 13),
+                    dropdownColor: Colors.white,
+                    isDense: true,
+                    icon: const Icon(Icons.arrow_drop_down, size: 18),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Spacer to push search and manage button to the right
+              SizedBox(
+                width: 40,
+                child: Container(),
+              ),
+              // Expanded to push the next widgets to the right
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  return Row(
+                    children: [
+                      SizedBox(
+                        width: MediaQuery.of(context).size.width * 0.25,
+                      ),
+                      // --- Swap: Manage button first, then search bar ---
+                      ElevatedButton.icon(
+                        onPressed: () => _editSelectedProduct(context),
+                        icon: const Icon(Icons.settings, size: 18),
+                        label: const Text('Manage'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple[100],
+                          foregroundColor: Colors.deepPurple,
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                          textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 220,
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: 'Search products...',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[100],
+                            prefixIcon: const Icon(Icons.search, size: 20),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Builder(
+          builder: (context) {
+            // If "Show All" is selected, fetch all products from all catalogs
+            if (selectedCatalogueId == 'all') {
+              // Gather all product streams
+              final userId = FirebaseAuth.instance.currentUser?.uid;
+              if (userId == null) {
+                return const Text('No user.');
+              }
+              // Use a FutureBuilder to fetch all products from all catalogs
+              return FutureBuilder<List<Map<String, dynamic>>>(
+                future: () async {
+                  List<Map<String, dynamic>> allProducts = [];
+                  for (final doc in widget.docs) {
+                    final snap = await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(userId)
+                        .collection('catalogs')
+                        .doc(doc.id)
+                        .collection('products')
+                        .get();
+                    for (final p in snap.docs) {
+                      allProducts.add({
+                        'doc': p,
+                        'catalogueId': doc.id,
+                        'catalogueName': doc.data()['name'] ?? '',
+                      });
+                    }
+                  }
+                  return allProducts;
+                }(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return const Text('Error loading products');
+                  }
+                  final products = snapshot.data ?? [];
+                  if (products.isEmpty) {
+                    return const Text('No products found.');
+                  }
+
+                  // Sorting logic (same as before)
+                  List<Map<String, dynamic>> sortedProducts = List.from(products);
+                  sortedProducts.sort((a, b) {
+                    final aData = (a['doc'] as QueryDocumentSnapshot<Map<String, dynamic>>).data();
+                    final bData = (b['doc'] as QueryDocumentSnapshot<Map<String, dynamic>>).data();
+                    int result = 0;
+                    if (productSort != '') {
+                      result = (aData['name'] ?? '').toString().compareTo((bData['name'] ?? '').toString());
+                      if (productSort == 'desc') result = -result;
+                    } else if (codeSort != '') {
+                      result = (a['doc'] as QueryDocumentSnapshot).id.compareTo((b['doc'] as QueryDocumentSnapshot).id);
+                      if (codeSort == 'desc') result = -result;
+                    } else if (categorySort != '') {
+                      result = (aData['categoryName'] ?? '').toString().compareTo((bData['categoryName'] ?? '').toString());
+                      if (categorySort == 'desc') result = -result;
+                    } else if (priceSort != '') {
+                      result = (aData['price'] ?? '').toString().compareTo((bData['price'] ?? '').toString());
+                      if (priceSort == 'desc') result = -result;
+                    } else if (dateSort != '') {
+                      final aDate = aData['createdAt'] is Timestamp ? (aData['createdAt'] as Timestamp).toDate() : DateTime(2000);
+                      final bDate = bData['createdAt'] is Timestamp ? (bData['createdAt'] as Timestamp).toDate() : DateTime(2000);
+                      result = aDate.compareTo(bDate);
+                      if (dateSort == 'desc') result = -result;
+                    }
+                    return result;
+                  });
+
+                  // Status filter
+                  if (statusFilter.isNotEmpty) {
+                    sortedProducts = sortedProducts.where((item) {
+                      final data = (item['doc'] as QueryDocumentSnapshot).data() as Map<String, dynamic>?;
+                      final quantity = data?['quantity'] ?? 0;
+                      String status;
+                      if (quantity > 10) {
+                        status = 'Available';
+                      } else if (quantity > 0) {
+                        status = 'Low Stock';
+                      } else {
+                        status = 'Not Available';
+                      }
+                      return status == statusFilter;
+                    }).toList();
+                  }
+
+                  // Search filter
+                  final searchText = _searchController.text.trim().toLowerCase();
+                  if (searchText.isNotEmpty) {
+                    sortedProducts = sortedProducts.where((item) {
+                      final data = (item['doc'] as QueryDocumentSnapshot).data();
+                      final mapData = data is Map<String, dynamic> ? data : <String, dynamic>{};
+                      final name = (mapData['name'] ?? '').toString().toLowerCase();
+                      final code = (item['doc'] as QueryDocumentSnapshot).id.toLowerCase();
+                      final category = (mapData['categoryName'] ?? '').toString().toLowerCase();
+                      final price = (mapData['price'] ?? '').toString().toLowerCase();
+                      return name.contains(searchText) ||
+                          code.contains(searchText) ||
+                          category.contains(searchText) ||
+                          price.contains(searchText);
+                    }).toList();
+                  }
+
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      columns: [
+                        DataColumn(
+                          label: const Text(''),
+                        ),
+                        DataColumn(
+                          label: const Text('#'),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Product'),
+                              _sortDropdown(
+                                sortOrder: productSort,
+                                onChanged: (val) => setState(() => productSort = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Product Code'),
+                              _sortDropdown(
+                                sortOrder: codeSort,
+                                onChanged: (val) => setState(() => codeSort = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Category'),
+                              _sortDropdown(
+                                sortOrder: categorySort,
+                                onChanged: (val) => setState(() => categorySort = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Unit Price'),
+                              _sortDropdown(
+                                sortOrder: priceSort,
+                                onChanged: (val) => setState(() => priceSort = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Created Date'),
+                              _sortDropdown(
+                                sortOrder: dateSort,
+                                onChanged: (val) => setState(() => dateSort = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Status'),
+                              _statusDropdown(
+                                value: statusFilter,
+                                onChanged: (val) => setState(() => statusFilter = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      rows: sortedProducts.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final item = entry.value;
+                        final doc = item['doc'] as QueryDocumentSnapshot<Map<String, dynamic>>;
+                        final data = doc.data();
+                        final name = data['name'] ?? '';
+                        final code = doc.id;
+                        final category = data['categoryName'] ?? '';
+                        final price = data['price'] ?? '';
+                        final quantity = data['quantity'] ?? 0;
+                        String status;
+                        Color statusColor;
+                        Color statusBg;
+                        if (quantity > 10) {
+                          status = 'Available';
+                          statusColor = Colors.green;
+                          statusBg = const Color(0xFFE8F5E9); // light green
+                        } else if (quantity > 0) {
+                          status = 'Low Stock';
+                          statusColor = Colors.amber[800]!;
+                          statusBg = const Color(0xFFFFFDE7); // light yellow
+                        } else {
+                          status = 'Not Available';
+                          statusColor = Colors.redAccent;
+                          statusBg = const Color(0xFFFFEBEE); // light red
+                        }
+                        String createdDate = '';
+                        final createdAt = data['createdAt'];
+                        if (createdAt is Timestamp) {
+                          createdDate = createdAt.toDate().toString().split(' ').first;
+                        }
+                        final isSelected = _selectedProductId == code && _selectedProductCatalogueId == item['catalogueId'];
+                        return DataRow(
+                          selected: isSelected,
+                          cells: [
+                            DataCell(
+                              Radio<String>(
+                                value: code,
+                                groupValue: _selectedProductId,
+                                onChanged: (_) {
+                                  setState(() {
+                                    _selectedProductId = code;
+                                    _selectedProductCatalogueId = item['catalogueId'];
+                                    _selectedProductData = data;
+                                    _selectedProductImages = data['images'] as List<dynamic>? ?? [];
+                                  });
+                                },
+                              ),
+                            ),
+                            DataCell(Text('${index + 1}')),
+                            DataCell(Text(name)),
+                            DataCell(Text(code)),
+                            DataCell(Text(category)),
+                            DataCell(Text(price.toString())),
+                            DataCell(Text(createdDate)),
+                            DataCell(
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: statusBg,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  status,
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              );
+            }
+
+            // If a specific catalogue is selected
+            if (selectedCatalogueId != null) {
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: selectedCatalogueId == null
+                    ? null
+                    : FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(FirebaseAuth.instance.currentUser?.uid)
+                        .collection('catalogs')
+                        .doc(selectedCatalogueId)
+                        .collection('products')
+                        .orderBy('createdAt', descending: true)
+                        .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return const Text('Error loading products');
+                  }
+                  final products = snapshot.data?.docs ?? [];
+                  if (products.isEmpty) {
+                    return const Text('No products found in this catalogue.');
+                  }
+
+                  // Sorting logic
+                  List<QueryDocumentSnapshot<Map<String, dynamic>>> sortedProducts = List.from(products);
+                  sortedProducts.sort((a, b) {
+                    final aData = a.data();
+                    final bData = b.data();
+                    int result = 0;
+                    if (productSort != '') {
+                      result = (aData['name'] ?? '').toString().compareTo((bData['name'] ?? '').toString());
+                      if (productSort == 'desc') result = -result;
+                    } else if (codeSort != '') {
+                      result = a.id.compareTo(b.id);
+                      if (codeSort == 'desc') result = -result;
+                    } else if (categorySort != '') {
+                      result = (aData['categoryName'] ?? '').toString().compareTo((bData['categoryName'] ?? '').toString());
+                      if (categorySort == 'desc') result = -result;
+                    } else if (priceSort != '') {
+                      result = (aData['price'] ?? '').toString().compareTo((bData['price'] ?? '').toString());
+                      if (priceSort == 'desc') result = -result;
+                    } else if (dateSort != '') {
+                      final aDate = aData['createdAt'] is Timestamp ? (aData['createdAt'] as Timestamp).toDate() : DateTime(2000);
+                      final bDate = bData['createdAt'] is Timestamp ? (bData['createdAt'] as Timestamp).toDate() : DateTime(2000);
+                      result = aDate.compareTo(bDate);
+                      if (dateSort == 'desc') result = -result;
+                    }
+                    return result;
+                  });
+
+                  // Status filter
+                  if (statusFilter.isNotEmpty) {
+                    sortedProducts = sortedProducts.where((doc) {
+                      final quantity = doc.data()['quantity'] ?? 0;
+                      String status;
+                      if (quantity > 10) {
+                        status = 'Available';
+                      } else if (quantity > 0) {
+                        status = 'Low Stock';
+                      } else {
+                        status = 'Not Available';
+                      }
+                      return status == statusFilter;
+                    }).toList();
+                  }
+
+                  // Search filter
+                  final searchText = _searchController.text.trim().toLowerCase();
+                  if (searchText.isNotEmpty) {
+                    sortedProducts = sortedProducts.where((doc) {
+                      final data = doc.data();
+                      final name = (data['name'] ?? '').toString().toLowerCase();
+                      final code = doc.id.toLowerCase();
+                      final category = (data['categoryName'] ?? '').toString().toLowerCase();
+                      final price = (data['price'] ?? '').toString().toLowerCase();
+                      return name.contains(searchText) ||
+                          code.contains(searchText) ||
+                          category.contains(searchText) ||
+                          price.contains(searchText);
+                    }).toList();
+                  }
+
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      columns: [
+                        DataColumn(
+                          label: const Text(''),
+                        ),
+                        DataColumn(
+                          label: const Text('#'),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Product'),
+                              _sortDropdown(
+                                sortOrder: productSort,
+                                onChanged: (val) => setState(() => productSort = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Product Code'),
+                              _sortDropdown(
+                                sortOrder: codeSort,
+                                onChanged: (val) => setState(() => codeSort = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Category'),
+                              _sortDropdown(
+                                sortOrder: categorySort,
+                                onChanged: (val) => setState(() => categorySort = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Unit Price'),
+                              _sortDropdown(
+                                sortOrder: priceSort,
+                                onChanged: (val) => setState(() => priceSort = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Created Date'),
+                              _sortDropdown(
+                                sortOrder: dateSort,
+                                onChanged: (val) => setState(() => dateSort = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: [
+                              const Text('Status'),
+                              _statusDropdown(
+                                value: statusFilter,
+                                onChanged: (val) => setState(() => statusFilter = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      rows: sortedProducts.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final doc = entry.value;
+                        final data = doc.data();
+                        final name = data['name'] ?? '';
+                        final code = doc.id;
+                        final category = data['categoryName'] ?? '';
+                        final price = data['price'] ?? '';
+                        final quantity = data['quantity'] ?? 0;
+                        String status;
+                        Color statusColor;
+                        Color statusBg;
+                        if (quantity > 10) {
+                          status = 'Available';
+                          statusColor = Colors.green;
+                          statusBg = const Color(0xFFE8F5E9); // light green
+                        } else if (quantity > 0) {
+                          status = 'Low Stock';
+                          statusColor = Colors.amber[800]!;
+                          statusBg = const Color(0xFFFFFDE7); // light yellow
+                        } else {
+                          status = 'Not Available';
+                          statusColor = Colors.redAccent;
+                          statusBg = const Color(0xFFFFEBEE); // light red
+                        }
+                        String createdDate = '';
+                        final createdAt = data['createdAt'];
+                        if (createdAt is Timestamp) {
+                          createdDate = createdAt.toDate().toString().split(' ').first;
+                        }
+                        final isSelected = _selectedProductId == code && _selectedProductCatalogueId == selectedCatalogueId;
+                        return DataRow(
+                          selected: isSelected,
+                          cells: [
+                            DataCell(
+                              Radio<String>(
+                                value: code,
+                                groupValue: _selectedProductId,
+                                onChanged: (_) {
+                                  setState(() {
+                                    _selectedProductId = code;
+                                    _selectedProductCatalogueId = selectedCatalogueId;
+                                    _selectedProductData = data;
+                                    _selectedProductImages = data['images'] as List<dynamic>? ?? [];
+                                  });
+                                },
+                              ),
+                            ),
+                            DataCell(Text('${index + 1}')),
+                            DataCell(Text(name)),
+                            DataCell(Text(code)),
+                            DataCell(Text(category)),
+                            DataCell(Text(price.toString())),
+                            DataCell(Text(createdDate)),
+                            DataCell(
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: statusBg,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  status,
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+      ],
     );
   }
 }

@@ -4,13 +4,19 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mt_dashboard/ui/views/dasboard/dashboard_view.dart';
-import 'package:mt_dashboard/ui/views/dasboard/desktop/bills.dart';
-import 'package:mt_dashboard/ui/views/dasboard/desktop/calendar.dart';
-import 'package:mt_dashboard/ui/views/dasboard/desktop/history.dart';
 import 'package:mt_dashboard/ui/views/dasboard/desktop/settings_view.dart';
 import 'package:mt_dashboard/ui/views/home/home_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:collection/collection.dart'; // Import for firstWhereOrNull
+
+// Imports for the new sidebar's navigation
+import 'package:mt_dashboard/ui/views/dasboard/desktop/calendar_view.dart';
+import 'package:mt_dashboard/ui/views/dasboard/desktop/catalouge_view.dart';
+import 'package:mt_dashboard/ui/views/dasboard/desktop/member_view.dart';
+import 'package:mt_dashboard/ui/views/dasboard/desktop/orders_view.dart';
+import 'package:mt_dashboard/ui/views/dasboard/desktop/pos_view.dart';
+import 'package:mt_dashboard/ui/views/dasboard/history_view.dart';
+
 
 class PosViewDesktop extends StatefulWidget {
   const PosViewDesktop({super.key});
@@ -28,13 +34,16 @@ class _PosViewDesktopState extends State<PosViewDesktop> {
   String? selectedPayment;
   String? checkoutMessage;
   String searchQuery = '';
+  
+  bool _isSidebarExpanded = false; // State for new sidebar
+  bool _isBillDetailsExpanded = true; // State for expandable bill details
 
   List<Map<String, dynamic>> appliedDiscounts = [];
 
   bool _isManualDiscountInputEnabled = false;
-  TextEditingController _manualDiscountController = TextEditingController();
+  final TextEditingController _manualDiscountController = TextEditingController();
 
-  TextEditingController _couponCodeController = TextEditingController();
+  final TextEditingController _couponCodeController = TextEditingController();
   Timer? _couponDebounceTimer;
 
   @override
@@ -434,99 +443,240 @@ class _PosViewDesktopState extends State<PosViewDesktop> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildExpandedBillDetails() {
     final user = FirebaseAuth.instance.currentUser;
     final userId = user?.uid ?? '';
-
     double discountedTotal = total * (1 - _totalDiscountPercentage / 100);
 
-    print('DEBUG: Building PosViewDesktop. Total Discount Percentage: $_totalDiscountPercentage, Total Discount Amount: ${total * (_totalDiscountPercentage / 100)}, Final Total: $discountedTotal, Applied Discounts: $appliedDiscounts');
+    return Container(
+      color: Colors.white, // Set background color to white
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Order Details',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                icon: const Icon(Icons.arrow_forward_ios, size: 18),
+                tooltip: 'Collapse',
+                onPressed: () {
+                  setState(() {
+                    _isBillDetailsExpanded = false;
+                  });
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Combined Customer Name and Member Selection
+          _CustomerNameAndMemberInput(
+            userId: userId,
+            initialCustomerName: customerName, // Pass current customer name
+            initialMemberId: selectedMemberId, // Pass current selected member ID
+            onChangedAndMemberId: (name, memberId) {
+              setState(() {
+                customerName = name;
+                selectedMemberId = memberId;
+                _isManualDiscountInputEnabled = false;
+                _manualDiscountController.clear();
+                _clearDiscountType('Manual Discount');
+                _couponCodeController.clear(); // Clear coupon on member selection
+                _clearDiscountType('Coupon Discount'); // Clear coupon discount
+                _getMemberDiscount(memberId);
+              });
+            },
+          ),
+          const SizedBox(height: 16),
+          // Manual Discount Input with Checkbox
+          Row(
+            children: [
+              Checkbox(
+                value: _isManualDiscountInputEnabled,
+                onChanged: (bool? newValue) {
+                  setState(() {
+                    _isManualDiscountInputEnabled = newValue ?? false;
+                    if (!_isManualDiscountInputEnabled) {
+                      _manualDiscountController.clear();
+                      _clearDiscountType('Manual Discount');
+                    }
+                    // No longer clear member discount if manual is enabled, as they now stack
+                    _onManualDiscountChanged();
+                  });
+                },
+              ),
+              Expanded(
+                child: TextFormField(
+                  controller: _manualDiscountController,
+                  enabled: _isManualDiscountInputEnabled,
+                  decoration: const InputDecoration(
+                    labelText: 'Manual Discount (%)',
+                    suffixText: '%',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Coupon Code Input Field
+          TextFormField(
+            controller: _couponCodeController,
+            decoration: const InputDecoration(
+              labelText: 'Coupon Code',
+              hintText: 'Enter coupon code',
+              border: OutlineInputBorder(),
+              suffixIcon: Icon(Icons.local_offer),
+            ),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            decoration: const InputDecoration(
+              labelText: 'Select Payment',
+              border: OutlineInputBorder(),
+            ),
+            value: selectedPayment,
+            items: const [
+              DropdownMenuItem(value: 'Cash', child: Text('Cash')),
+              DropdownMenuItem(value: 'Card', child: Text('Card')),
+              DropdownMenuItem(value: 'E-Wallet', child: Text('E-Wallet')),
+            ],
+            onChanged: (value) => setState(() => selectedPayment = value),
+          ),
+          const SizedBox(height: 16),
+          // TextField for the custom message
+          TextField(
+            decoration: const InputDecoration(
+              labelText: 'Checkout Message (optional)',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (val) => checkoutMessage = val,
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.builder(
+              itemCount: billItems.length,
+              itemBuilder: (context, index) {
+                final item = billItems[index];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${item['name']} ${item['quantity'] > 1 ? 'x${item['quantity']}' : ''}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Text('\$${(item['itemTotal'] ?? 0.0).toStringAsFixed(2)}'),
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.orange),
+                            onPressed: () => removeFromBill(index),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          const Divider(),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Subtotal:', style: TextStyle(fontSize: 16)),
+              Text('\$${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16)),
+            ],
+          ),
+          ...appliedDiscounts.map((discount) {
+            final discountPercentage = discount['percentage'] as double;
+            final discountAmount = total * (discountPercentage / 100);
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('${discount['type']} (${discountPercentage.toStringAsFixed(0)}%):',
+                    style: const TextStyle(fontSize: 16, color: Colors.green)),
+                Text(
+                    '-\$${discountAmount.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 16, color: Colors.green)),
+              ],
+            );
+          }).toList(),
+          
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Total:', style: TextStyle(fontSize: 18)),
+              Text(
+                  '\$${discountedTotal.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: billItems.isNotEmpty ? checkout : null,
+              child: const Text('Checkout'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCollapsedBillDetails() {
+    return Center(
+      child: IconButton(
+        icon: const Icon(Icons.arrow_back_ios),
+        tooltip: 'Expand Bill Details',
+        onPressed: () {
+          setState(() {
+            _isBillDetailsExpanded = true;
+          });
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    print('DEBUG: Building PosViewDesktop. Total Discount Percentage: $_totalDiscountPercentage, Total Discount Amount: ${total * (_totalDiscountPercentage / 100)}, Applied Discounts: $appliedDiscounts');
 
     return Scaffold(
       body: Row(
         children: [
-          // Sidebar
-          Container(
-            width: 220,
-            color: Colors.blueGrey[900],
-            child: Column(
-              children: [
-                const SizedBox(height: 40),
-                Image.asset(
-                  'assets/images/placeholder.png',
-                  width: 125.0,
-                  fit: BoxFit.cover,
-                ),
-                const SizedBox(height: 40),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.blueGrey[700],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: _SidebarButton(
-                    icon: Icons.restaurant_menu,
-                    label: 'Menu',
-                    onTap: () {},
-                  ),
-                ),
-                _SidebarButton(icon: Icons.list_alt, label: 'Order List', onTap: () {}),
-                _SidebarButton(
-                    icon: Icons.history,
-                    label: 'History',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const HistoryPage()),
-                      );
-                    }),
-                _SidebarButton(
-                    icon: Icons.receipt_long,
-                    label: 'Bills',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const BillPage()),
-                      );
-                    }),
-                _SidebarButton(
-                    icon: Icons.calendar_month,
-                    label: 'Calendar',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const CalendarPage()),
-                      );
-                    }),
-                const Divider(color: Colors.white54, height: 32),
-                _SidebarButton(
-                  icon: Icons.settings,
-                  label: 'Settings',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const SettingsView()),
-                    );
-                  },
-                ),
-                _SidebarButton(icon: Icons.help_center, label: 'Help Center', onTap: () {}),
-                const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: ListTile(
-                    leading: const Icon(Icons.logout, color: Colors.white),
-                    title: const Text('Sign Out', style: TextStyle(color: Colors.white)),
-                    onTap: () async {
-                      await FirebaseAuth.instance.signOut().then((_) {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (context) => HomeView()),
-                        );
-                      });
-                    },
-                  ),
-                ),
-              ],
+          // New Sidebar from dashboard_view.desktop.dart
+          MouseRegion(
+            onEnter: (event) {
+              setState(() {
+                _isSidebarExpanded = true;
+              });
+            },
+            onExit: (event) {
+              setState(() {
+                _isSidebarExpanded = false;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: _isSidebarExpanded ? 240 : 70,
+              child: Sidebar(
+                isExpanded: _isSidebarExpanded,
+              ),
             ),
           ),
           // Main Content
@@ -539,59 +689,36 @@ class _PosViewDesktopState extends State<PosViewDesktop> {
                   // Top bar
                   Row(
                     children: [
-                      Expanded(
-                        child: TextField(
-                          decoration: InputDecoration(
-                            hintText: 'Search products...',
-                            prefixIcon: Icon(Icons.search),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey[200],
-                            suffixIcon: searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      setState(() {
-                                        searchQuery = '';
-                                      });
-                                      FocusScope.of(context).unfocus();
-                                    },
-                                  )
-                                : null,
-                          ),
-                          controller: TextEditingController(text: searchQuery)
-                            ..selection = TextSelection.collapsed(offset: searchQuery.length),
-                          onChanged: (val) {
-                            setState(() {
-                              searchQuery = val.trim().toLowerCase();
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 24),
+                      Text('Orders', style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold)),
+                      const Spacer(),
                       _RealtimeTimeDateWidget(),
                       const SizedBox(width: 24),
                       IconButton(
-                        icon: const Icon(Icons.notifications_none),
-                        onPressed: () {},
+                      icon: const Icon(Icons.notifications_none),
+                      onPressed: () {},
                       ),
                       const SizedBox(width: 16),
                       CircleAvatar(
-                        backgroundColor: Colors.blueGrey[700],
-                        child: const Icon(Icons.person, color: Colors.white),
+                      backgroundColor: Colors.blueGrey[700],
+                      child: const Icon(Icons.person, color: Colors.white),
                       ),
                     ],
                   ),
                   const SizedBox(height: 24),
+                    Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Select Products',
+                      style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+                    ),
+                    ),
                   // Catalogs from Firestore
                   SizedBox(
                     height: 48,
                     child: StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
                           .collection('users')
-                          .doc(userId)
+                          .doc(FirebaseAuth.instance.currentUser?.uid ?? '')
                           .collection('catalogs')
                           .snapshots(),
                       builder: (context, snapshot) {
@@ -634,13 +761,43 @@ class _PosViewDesktopState extends State<PosViewDesktop> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                        TextField(
+                          decoration: InputDecoration(
+                            hintText: 'Search products...',
+                            prefixIcon: const Icon(Icons.search),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[200],
+                            suffixIcon: searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      setState(() {
+                                        searchQuery = '';
+                                      });
+                                      FocusScope.of(context).unfocus();
+                                    },
+                                  )
+                                : null,
+                          ),
+                          controller: TextEditingController(text: searchQuery)
+                            ..selection = TextSelection.collapsed(offset: searchQuery.length),
+                          onChanged: (val) {
+                            setState(() {
+                              searchQuery = val.trim().toLowerCase();
+                            });
+                          },
+                        ),
+                        SizedBox(height: 16),
                   // Products grid from Firestore
                   Expanded(
                     child: StreamBuilder<List<QueryDocumentSnapshot>>(
                       stream: selectedCatalog == null
                           ? FirebaseFirestore.instance
                               .collection('users')
-                              .doc(userId)
+                              .doc(FirebaseAuth.instance.currentUser?.uid ?? '')
                               .collection('catalogs')
                               .snapshots()
                               .asyncExpand((catalogSnap) async* {
@@ -648,7 +805,7 @@ class _PosViewDesktopState extends State<PosViewDesktop> {
                                 for (var catalog in catalogSnap.docs) {
                                   final productSnap = await FirebaseFirestore.instance
                                       .collection('users')
-                                      .doc(userId)
+                                      .doc(FirebaseAuth.instance.currentUser?.uid ?? '')
                                       .collection('catalogs')
                                       .doc(catalog.id)
                                       .collection('products')
@@ -659,7 +816,7 @@ class _PosViewDesktopState extends State<PosViewDesktop> {
                               })
                           : FirebaseFirestore.instance
                               .collection('users')
-                              .doc(userId)
+                              .doc(FirebaseAuth.instance.currentUser?.uid ?? '')
                               .collection('catalogs')
                               .doc(selectedCatalog)
                               .collection('products')
@@ -777,176 +934,261 @@ class _PosViewDesktopState extends State<PosViewDesktop> {
               ),
             ),
           ),
-          // Bill Details
-          Container(
-            width: 320,
+          // Expandable Bill Details
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            width: _isBillDetailsExpanded ? 320 : 60,
             color: Colors.grey[100],
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Bill Details',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 24),
-                // Combined Customer Name and Member Selection
-                _CustomerNameAndMemberInput(
-                  userId: userId,
-                  initialCustomerName: customerName, // Pass current customer name
-                  initialMemberId: selectedMemberId, // Pass current selected member ID
-                  onChangedAndMemberId: (name, memberId) {
-                    setState(() {
-                      customerName = name;
-                      selectedMemberId = memberId;
-                      _isManualDiscountInputEnabled = false; 
-                      _manualDiscountController.clear();
-                      _clearDiscountType('Manual Discount');
-                      _couponCodeController.clear(); // Clear coupon on member selection
-                      _clearDiscountType('Coupon Discount'); // Clear coupon discount
-                      _getMemberDiscount(memberId);
-                    });
-                  },
-                ),
-                const SizedBox(height: 16),
-                // Manual Discount Input with Checkbox
-                Row(
-                  children: [
-                    Checkbox(
-                      value: _isManualDiscountInputEnabled,
-                      onChanged: (bool? newValue) {
-                        setState(() {
-                          _isManualDiscountInputEnabled = newValue ?? false;
-                          if (!_isManualDiscountInputEnabled) {
-                            _manualDiscountController.clear();
-                            _clearDiscountType('Manual Discount');
-                          } 
-                          // No longer clear member discount if manual is enabled, as they now stack
-                          _onManualDiscountChanged();
-                        });
-                      },
+            child: _isBillDetailsExpanded
+                ? _buildExpandedBillDetails()
+                : _buildCollapsedBillDetails(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- Sidebar Widget (from dashboard_view.desktop.dart) ---
+class Sidebar extends StatelessWidget {
+  final bool isExpanded;
+
+  const Sidebar({
+    super.key,
+    required this.isExpanded,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // List of navigation items
+    final navItems = [
+      _SidebarNavItem(
+        icon: Icons.home,
+        label: 'Dashboard',
+        isSelected: false, // In POS view, Dashboard is not selected
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const DashboardView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.point_of_sale,
+        label: 'POS',
+        isSelected: true, // POS is selected
+        isExpanded: isExpanded,
+        onTap: () {
+          // Already on POS view, no action needed or refresh
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.inventory,
+        label: 'Inventory',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const CatalougeView()),
+          );
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.local_shipping,
+      //   label: 'Orders',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const OrdersView()),
+      //     );
+      //   },
+      // ),
+      _SidebarNavItem(
+        icon: Icons.calendar_month,
+        label: 'Calendar',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const CalendarView()),
+          );
+        },
+      ),
+      _SidebarNavItem(
+        icon: Icons.group,
+        label: 'Customers',
+        isExpanded: isExpanded,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const MemberView()),
+          );
+        },
+      ),
+      // _SidebarNavItem(
+      //   icon: Icons.history,
+      //   label: 'History',
+      //   isExpanded: isExpanded,
+      //   onTap: () {
+      //     Navigator.of(context).push(
+      //       MaterialPageRoute(builder: (context) => const HistoryView()),
+      //     );
+      //   },
+      // ),
+    ];
+
+    return Container(
+      width: isExpanded ? 240 : 70,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF8B5CF6),
+            Color(0xFF6F01FD),
+          ],
+        ),
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(24.0),
+          bottomRight: Radius.circular(24.0),
+        ),
+      ),
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          const SizedBox(height: 96.0),
+          // Branding
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Center(
+              child: isExpanded
+                  ? Image.asset(
+                      'assets/images/placeholder.png',
+                      height: 100,
+                      width: 100,
+                    )
+                  : Image.asset(
+                      'assets/images/placeholder_small.png',
+                      height: 50,
+                      width: 50,
                     ),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _manualDiscountController,
-                        enabled: _isManualDiscountInputEnabled,
-                        decoration: const InputDecoration(
-                          labelText: 'Manual Discount (%)',
-                          suffixText: '%',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+            ),
+          ),
+          const SizedBox(height: 24.0),
+          // Center navigation items vertically
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: navItems,
+              ),
+            ),
+          ),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(24.0),
+                child: InkWell(
+                  onTap: () async {},
+                  borderRadius: BorderRadius.circular(24.0),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24.0),
+                    ),
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(width: 12.0),
+                          Text(
+                            'Basic Plan',
+                            style: TextStyle(
+                              fontSize: 16.0,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF6F01FD),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Coupon Code Input Field
-                TextFormField(
-                  controller: _couponCodeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Coupon Code',
-                    hintText: 'Enter coupon code',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.local_offer),
                   ),
                 ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  decoration: const InputDecoration(
-                    labelText: 'Select Payment',
-                    border: OutlineInputBorder(),
-                  ),
-                  value: selectedPayment,
-                  items: const [
-                    DropdownMenuItem(value: 'Cash', child: Text('Cash')),
-                    DropdownMenuItem(value: 'Card', child: Text('Card')),
-                    DropdownMenuItem(value: 'E-Wallet', child: Text('E-Wallet')),
-                  ],
-                  onChanged: (value) => setState(() => selectedPayment = value),
-                ),
-                const SizedBox(height: 16),
-                // TextField for the custom message
-                TextField(
-                  decoration: const InputDecoration(
-                    labelText: 'Checkout Message (optional)',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (val) => checkoutMessage = val,
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: billItems.length,
-                    itemBuilder: (context, index) {
-                      final item = billItems[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '${item['name']} ${item['quantity'] > 1 ? 'x${item['quantity']}' : ''}',
-                            ),
-                            Row(
-                              children: [
-                                Text('\$${(item['itemTotal'] ?? 0.0).toStringAsFixed(2)}'),
-                                IconButton(
-                                  icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.orange),
-                                  onPressed: () => removeFromBill(index),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Subtotal:', style: TextStyle(fontSize: 16)),
-                    Text('\$${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16)),
-                  ],
-                ),
-                ...appliedDiscounts.map((discount) {
-                  final discountPercentage = discount['percentage'] as double;
-                  final discountAmount = total * (discountPercentage / 100);
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('${discount['type']} (${discountPercentage.toStringAsFixed(0)}%):',
-                          style: const TextStyle(fontSize: 16, color: Colors.green)),
-                      Text(
-                          '-\$${discountAmount.toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 16, color: Colors.green)),
-                    ],
+              ),
+            ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 16.0 : 0.0, vertical: 8.0),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(24.0),
+              child: InkWell(
+                onTap: () async {
+                  final user = FirebaseAuth.instance.currentUser;
+                  final userId = user?.uid;
+
+                  if (userId != null) {
+                    try {
+                      await FirebaseFirestore.instance.collection('users').doc(userId).collection('activity').add({
+                        'type': 'Logout',
+                        'message': 'User logged out',
+                        'timestamp': FieldValue.serverTimestamp(),
+                      });
+                      print('DEBUG: Logout event logged to "activity" collection for user $userId');
+                    } catch (e) {
+                      print('ERROR: Failed to log logout event for user $userId: $e');
+                    }
+                  }
+
+                  await FirebaseAuth.instance.signOut();
+                  if (!context.mounted) return;
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HomeView()),
                   );
-                }).toList(),
-                
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Total:', style: TextStyle(fontSize: 18)),
-                    Text(
-                        '\$${discountedTotal.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: billItems.isNotEmpty ? checkout : null,
-                    child: const Text('Checkout'),
+                },
+                borderRadius: BorderRadius.circular(24.0),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFB8C63),
+                        Color(0xFFF74403),
+                        Color(0xFFFB8C63),
+                      ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24.0),
+                  ),
+                  child: Container(
+                    height: 48,
+                    alignment: isExpanded ? Alignment.center : Alignment.center,
+                    padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0),
+                    child: isExpanded
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.logout_outlined, color: Colors.white),
+                              SizedBox(width: 12.0),
+                              Text(
+                                'Logout',
+                                style: TextStyle(
+                                  fontSize: 16.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Icon(Icons.logout_outlined, color: Colors.white, size: 24),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -955,24 +1197,75 @@ class _PosViewDesktopState extends State<PosViewDesktop> {
   }
 }
 
-class _SidebarButton extends StatelessWidget {
+class _SidebarNavItem extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback? onTap;
-  const _SidebarButton({required this.icon, required this.label, this.onTap});
+  final bool isSelected;
+  final bool isPrimary;
+  final bool isExpanded;
+  final VoidCallback onTap;
+
+  const _SidebarNavItem({
+    required this.icon,
+    required this.label,
+    this.isSelected = false,
+    this.isPrimary = false,
+    required this.onTap,
+    required this.isExpanded,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: ListTile(
-        leading: Icon(icon, color: Colors.white),
-        title: Text(label, style: const TextStyle(color: Colors.white)),
-        onTap: onTap,
+    const Color contentBackgroundColor = Color(0xFFF1F5F9);
+
+    Color itemIconColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
+
+    Color itemTextColor = isSelected ? const Color(0xFF6F01FD) : Colors.white;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Material(
+        color: isSelected ? contentBackgroundColor : Colors.transparent,
+        borderRadius: isSelected
+            ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+            : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: isSelected
+              ? const BorderRadius.horizontal(left: Radius.circular(32.0))
+              : const BorderRadius.horizontal(right: Radius.circular(12.0)),
+          child: Container(
+            height: 48,
+            padding: EdgeInsets.symmetric(horizontal: isExpanded ? 24.0 : 0.0),
+            alignment: isExpanded ? Alignment.centerLeft : Alignment.center,
+            child: isExpanded
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        color: itemIconColor,
+                      ),
+                      const SizedBox(width: 12.0),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16.0,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: itemTextColor,
+                        ),
+                      ),
+                    ],
+                  )
+                : Icon(icon, color: itemIconColor, size: 24),
+          ),
+        ),
       ),
     );
   }
 }
+
 
 class _CategoryChip extends StatelessWidget {
   final String label;
@@ -1180,42 +1473,6 @@ class _ProductImageCarouselState extends State<_ProductImageCarousel> {
         );
       }
     });
-  }
-
-  void _pauseAutoScroll() {
-    _timer?.cancel();
-    _isUserInteracting = true;
-
-    Timer(const Duration(seconds: 30), () {
-      if (mounted) {
-        _isUserInteracting = false;
-        _startAutoScroll();
-      }
-    });
-  }
-
-  void _goToNextPage() {
-    if (_pageController.hasClients) {
-      _currentPage++;
-      _pageController.animateToPage(
-        _currentPage,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-    _pauseAutoScroll();
-  }
-
-  void _goToPreviousPage() {
-    if (_pageController.hasClients) {
-      _currentPage--;
-      _pageController.animateToPage(
-        _currentPage,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-    _pauseAutoScroll();
   }
 
   @override
